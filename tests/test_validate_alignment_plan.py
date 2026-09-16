@@ -132,6 +132,17 @@ class AlignmentPlanTests(unittest.TestCase):
         plan["subtitle_units"][0]["end_us"] = 50_000_000  # duration_us is 10_000_000
         self.assertFalse(MODULE.validate(plan)["ok"])
 
+    def test_words_health_role_must_be_valid(self):
+        plan = valid_plan()
+        plan["policy"]["words_health"]["role"] = "authoritative"
+        self.assertFalse(MODULE.validate(plan)["ok"])
+
+    def test_words_health_role_fallback_allowed(self):
+        plan = valid_plan()
+        # fallback is valid only when word timing is not "valid"
+        plan["policy"]["words_health"] = {"status": "unavailable", "role": "fallback"}
+        self.assertTrue(MODULE.validate(plan)["ok"], MODULE.validate(plan))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,3 +1,4 @@
+import copy
 import sys
 import unittest
 from pathlib import Path
@@ -188,6 +189,37 @@ class PlanTests(unittest.TestCase):
             "subtitle_alignment": "approved",
         }
         self.assertFalse(validate(plan)["ok"])
+
+    def test_duplicate_decision_ids_rejected(self):
+        plan = self.base()
+        plan["decisions"].append(copy.deepcopy(plan["decisions"][0]))
+        result = validate(plan)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("duplicates id" in e for e in result["errors"]), result["errors"])
+
+    def test_outline_end_exceeds_duration_rejected(self):
+        plan = self.base()
+        plan["outline"]["units"][0]["end"] = 99.0  # input.duration is 10.0
+        self.assertFalse(validate(plan)["ok"])
+
+    def test_cli_main_smoke(self):
+        import json as _json
+        import sys
+        import tempfile
+        from pathlib import Path
+        from validate_plan import main as plan_main
+
+        plan = self.base()
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "plan.json"
+            path.write_text(_json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+            argv_backup = sys.argv
+            try:
+                sys.argv = ["validate_plan.py", str(path)]
+                rc = plan_main()
+            finally:
+                sys.argv = argv_backup
+        self.assertEqual(rc, 0)
 
 
 if __name__ == "__main__":
