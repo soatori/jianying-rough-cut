@@ -73,22 +73,18 @@ The plan must record the phase status separately: `workflow.content_pass` is `dr
 
 ## Decision rules
 
-- Edit complete semantic units unless the defect is a local filler, false start, stutter, or pause that can be removed without damaging speech.
-- Do not stitch unfinished fragments from different attempts into a synthetic statement.
-- A later take is not automatically better. Keep the version that is complete, natural, accurate, and contextually connected.
-- Repetition is removable only when no new premise, emphasis, emotion, contrast, clarification, condition, or speaker contribution is lost.
-- A discourse marker is removable only when it functions as padding. Keep it when it carries sequence, contrast, cause, response, reference, emphasis, or tone.
-- In overlap, preserve the primary information source. Remove assent-only interjections when they add no information; retain interruptions that add necessary facts or change the conversational direction.
-- Reordering moves complete semantic units. Recheck pronouns, connectors, chronology, causal dependencies, and domain-specific conditions afterward.
-- Record the start and end boundary basis for every decision. Use exact timestamps whenever the evidence permits; an approximate boundary on a destructive action must remain reviewable and may not be high-confidence.
-- Boundary evidence may come from semantic units, word or phrase boundaries, sentence ends, natural pauses, waveform, shot or take boundaries, or manual markers. Do not infer frame-accurate boundaries from vague natural-language instructions alone.
+- Edit complete semantic units unless the defect is a local filler, false start, stutter, or pause.
+- Do not stitch unfinished fragments from different attempts into a synthetic statement. A later take is not automatically better; keep the complete, natural, accurate, contextually connected version.
+- Repetition, discourse markers, and overlap: remove only when no new premise, emphasis, emotion, contrast, clarification, condition, or speaker contribution is lost. Criteria in [references/speech-cleanup.md](references/speech-cleanup.md) and [references/dialogue-and-qa.md](references/dialogue-and-qa.md).
+- Reordering moves complete semantic units. Recheck pronouns, connectors, chronology, causal dependencies, and domain conditions afterward.
+- Record start/end boundary basis for every decision. Exact timestamps when evidence permits; approximate boundary on a destructive action must remain reviewable and may not be high-confidence.
+- Boundary evidence and picture-lock rules: [references/audio-boundaries.md](references/audio-boundaries.md) and [references/content-analysis.md](references/content-analysis.md). Do not infer frame-accurate boundaries from vague instructions alone. Picture-lock only where a shot boundary carries a real semantic constraint.
 - Time thresholds may flag pause candidates but may not authorize deletion by themselves.
 - When evidence is insufficient, use `needs_listen`, `needs_context`, `low_confidence`, or `human_review`; do not convert uncertainty into a delete instruction.
-- When material is partial or unknown, do not mark an affected delete, shorten, reorder, or join decision as high-confidence. Add a review flag to lower-confidence candidates.
-- When a decision touches a domain-sensitive fact, terminology, number, unit, condition, or entity, record that sensitivity explicitly and retain the relevant evidence.
-- Subtitle recognition text is evidence, not truth. Correct the current saved subtitles against the edited timeline audio before packaging; do not use an older subtitle copy as the write source.
-- Use audio-first, local picture-lock only where the shot boundary carries a real semantic constraint. A cut inside continuous speech does not by itself justify splitting a subtitle or word.
-- Record `audio`, `picture`, or `manual` mode plus boundary basis, evidence, confidence, and review state for both ends of every aligned subtitle unit.
+- When material is partial or unknown, do not mark an affected delete, shorten, reorder, or join as high-confidence. Add a review flag to lower-confidence candidates.
+- When a decision touches a domain-sensitive fact, terminology, number, unit, condition, or entity, record that sensitivity and retain the evidence.
+- Subtitle recognition text is evidence, not truth. Correct current saved subtitles against edited-timeline audio before packaging; do not use an older subtitle copy as the write source.
+- Record `audio`, `picture`, or `manual` mode plus boundary basis, evidence, confidence, and review state for both ends of every aligned subtitle unit (see [references/alignment-plan.md](references/alignment-plan.md)).
 - Waveform thresholds locate candidates; they never authorize deletion or splitting by themselves. Word-level timestamps are cross-check evidence and require a health check.
 
 ## Required outputs
