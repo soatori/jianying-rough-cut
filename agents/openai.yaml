@@ -1,4 +1,0 @@
-interface:
-  display_name: "Jianying Rough Cut"
-  short_description: "Design content-first rough cuts for speech-led video"
-  default_prompt: "Analyze this speech-led material, separate content rough cut from refinement, and produce an auditable decision plan without editing any project files."
