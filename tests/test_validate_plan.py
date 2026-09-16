@@ -1,11 +1,17 @@
 import copy
-import sys
+import importlib.util
 import unittest
 from pathlib import Path
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from validate_plan import validate
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "validate_plan.py"
+SPEC = importlib.util.spec_from_file_location("validate_plan", SCRIPT)
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError(f"cannot load {SCRIPT}")
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+validate = MODULE.validate
+main = MODULE.main
 
 
 class PlanTests(unittest.TestCase):
@@ -206,8 +212,6 @@ class PlanTests(unittest.TestCase):
         import json as _json
         import sys
         import tempfile
-        from pathlib import Path
-        from validate_plan import main as plan_main
 
         plan = self.base()
         with tempfile.TemporaryDirectory() as td:
@@ -216,7 +220,7 @@ class PlanTests(unittest.TestCase):
             argv_backup = sys.argv
             try:
                 sys.argv = ["validate_plan.py", str(path)]
-                rc = plan_main()
+                rc = main()
             finally:
                 sys.argv = argv_backup
         self.assertEqual(rc, 0)
