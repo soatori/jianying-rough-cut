@@ -97,6 +97,41 @@ class AlignmentPlanTests(unittest.TestCase):
         MODULE.validate(plan)
         self.assertEqual(plan, before)
 
+    def test_approved_manual_mode_emits_audit_warning(self):
+        plan = valid_plan()
+        plan["subtitle_units"][0]["boundaries"]["start"].update({
+            "mode": "manual",
+            "basis": "manual_marker",
+            "evidence": ["edited_audio"],
+            "confidence": "high",
+            "review": "approved",
+        })
+        result = MODULE.validate(plan)
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(
+            any("manually resolved" in w for w in result.get("warnings", [])),
+            result,
+        )
+
+    def test_evidence_text_containing_manual_does_not_warn(self):
+        plan = valid_plan()
+        # valid_plan start is already mode=audio, review=approved
+        plan["subtitle_units"][0]["boundaries"]["start"]["evidence"] = [
+            "edited_audio",
+            "manual_marker_note_only",
+        ]
+        result = MODULE.validate(plan)
+        self.assertTrue(result["ok"], result)
+        self.assertFalse(
+            any("manually resolved" in w for w in result.get("warnings", [])),
+            result,
+        )
+
+    def test_end_us_beyond_duration_rejected(self):
+        plan = valid_plan()
+        plan["subtitle_units"][0]["end_us"] = 50_000_000  # duration_us is 10_000_000
+        self.assertFalse(MODULE.validate(plan)["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

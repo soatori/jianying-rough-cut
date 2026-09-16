@@ -232,8 +232,18 @@ def validate(plan: Any) -> dict[str, Any]:
     if plan.get("notes") is not None and not isinstance(plan.get("notes"), list):
         errors.append("notes must be an array when present")
 
-    if plan.get("review", {}).get("status") == "approved" if isinstance(plan.get("review"), dict) else False:
-        if any("manual" in str(unit.get("boundaries", {})) for unit in units if isinstance(unit, dict)):
+    review_obj = plan.get("review") if isinstance(plan.get("review"), dict) else {}
+    if review_obj.get("status") == "approved":
+        def _has_manual_mode(boundaries: object) -> bool:
+            if not isinstance(boundaries, dict):
+                return False
+            for end in ("start", "end"):
+                edge = boundaries.get(end)
+                if isinstance(edge, dict) and edge.get("mode") == "manual":
+                    return True
+            return False
+
+        if any(_has_manual_mode(unit.get("boundaries")) for unit in units if isinstance(unit, dict)):
             warnings.append("approved plan contains manually resolved boundaries; retain the evidence for audit")
 
     return {
