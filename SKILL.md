@@ -1,6 +1,6 @@
 ---
 name: jianying-rough-cut
-description: Analyze speech-led video or audio for theme, domain, outline, speakers, semantic rough-cut decisions, and post-cut subtitle proofreading/audio alignment without changing project files.
+description: Use when rough-cutting speech-led video/audio (口播/访谈/教程/讲座) — decide semantic keep/delete/shorten/reorder before touching a project file, or proofread subtitles against edited audio. Triggers: rough cut, 粗剪, semantic cut, content pass vs refinement, subtitle alignment, 字幕校对/对齐, speech cleanup, 去口水音. Do NOT use to edit CapCut/Jianying project files, package effects (花字/卡点), or cut non-speech montage.
 ---
 
 # Jianying Rough Cut Decision Making
