@@ -15,6 +15,21 @@ For each semantic unit record:
 - timing confidence and transcription uncertainty;
 - protected facts such as numbers, units, conditions, negation, comparison, and causality.
 
+## Highlight-group handoff
+
+After the source map is stable, group units for short-video emphasis without rewriting them. Use the shared roles `hook`, `background`, `question`, `reaction`, `answer`, `evidence`, `technical_detail`, `contrast`, `benefit`, `summary`, and `cta`.
+
+Each group must retain:
+
+- semantic-unit IDs and final subtitle references;
+- context and dependency notes;
+- speaker and conversational function;
+- the reason the group is valuable at short-video length;
+- protected-fact flags for numbers, models, brands, units, conditions, negation, comparison, or technical claims;
+- a `needs_listen` or `human_review` marker when audio must settle wording or boundaries.
+
+This handoff describes meaning and evidence only. It must not contain template coordinates, animation choices, sound choices, or Jianying write instructions.
+
 ## Value and redundancy
 
 Judge information meaning, not string similarity. Two differently worded units may be redundant; two similar units may serve different functions.
@@ -40,6 +55,17 @@ Candidates for removal include:
 Choose structure from the material: chronology, topic, question/answer, problem/reason/solution, conclusion-first, tutorial steps, or another source-supported form. Do not force a fixed template.
 
 Move complete semantic units. After reordering, inspect every connector, pronoun, reference, time cue, condition, and causal statement. A reordered sequence must remain truthful and speakable without invented narration.
+
+## Repeated-attempt rollup
+
+The per-decision table lists individual cuts and cannot answer "how many times was this line recorded, and which take survived" — the single question reviewers most want checked. Produce a separate rollup that groups attempts of the same idea:
+
+| line (opening) | times said | kept | removed | risk |
+| --- | --- | --- | --- | --- |
+| because today what is worth… | 3 | take 3 @ 00:08 | takes 1–2 | low — three takes near-identical |
+| most agents can search… | 2 | take 2 @ 04:40 | take 1 | high — the two differ, listen |
+
+Rules: list every idea recorded more than once; name the kept take by range, not by "the best one"; mark divergence between takes as high risk and `needs_listen`. If the takes each add independent information, they are not repetitions and do not appear here. This rollup is a required output alongside the Pass 1 and Pass 2 tables.
 
 ## Source audit
 

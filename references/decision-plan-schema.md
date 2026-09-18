@@ -18,7 +18,7 @@ Subtitle correction and timing alignment is a separate contract. After the conte
 - `recommended_structure`: ordered proposed units
 - `decisions`: Pass 1 and Pass 2 decisions
 - `protected_facts`: details that must survive review
-- `workflow`: content/refinement phase status and gate
+- `workflow`: mode plus content/refinement phase status and gate
 
 The surrounding workflow also tracks `subtitle_alignment` as `not_started`, `draft`, `stable`, or `approved`, but the alignment units live in the separate `subtitle_alignment_plan` rather than in this content decision plan.
 
@@ -43,6 +43,8 @@ The surrounding workflow also tracks `subtitle_alignment` as `not_started`, `dra
   "subtitle_alignment": "not_started"
 }
 ```
+
+`workflow.mode` defaults to `content_edit` and may be `content_edit` or `final_draft_audit`. An audit plan must also set `workflow.text_authority` to `final_visible_subtitle`. Audit mode is read-only: its decisions may be `keep` or `review`, but never `delete`, `shorten`, `reorder`, or `join`. For a full final-draft report, use [analysis-report-schema.md](analysis-report-schema.md) rather than turning the audit into an edit plan.
 
 `content_pass` is `draft`, `stable`, or `approved`. `refinement_pass` is `not_started`, `draft`, or `approved`. A refinement decision is valid only when `content_pass` is `stable` or `approved` and `refinement_pass` is not `not_started`.
 
@@ -77,6 +79,8 @@ The surrounding workflow also tracks `subtitle_alignment` as `not_started`, `dra
 ```
 
 Each outline unit should record its time range, title or summary, role, speaker or speakers, dependencies, information added, domain risk, and transcription confidence. The validator requires at least an ID, title/summary, role, time range, timebase, and confidence for each unit.
+
+Highlight groups may be recorded as a separate report handoff. Use the shared roles `hook`, `background`, `question`, `reaction`, `answer`, `evidence`, `technical_detail`, `contrast`, `benefit`, `summary`, and `cta`. Keep their semantic-unit references and protected-fact flags; do not add packaging coordinates or effects to this schema.
 
 ## Decision
 

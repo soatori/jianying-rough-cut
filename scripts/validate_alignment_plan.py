@@ -19,6 +19,7 @@ PLAN_STATUS = {"draft", "stable", "approved"}
 REVIEW_STATUS = {"pending", "approved", "not_required"}
 WORDS_STATUS = {"valid", "invalid", "unavailable"}
 WORDS_ROLE = {"cross_check", "fallback"}
+REMAP_STATUSES = {"not_required", "pending", "verified", "blocked"}
 
 # These keys belong to the Jianying adapter, never to a generic editorial plan.
 APPLICATION_KEYS = {
@@ -108,12 +109,17 @@ def validate(plan: Any) -> dict[str, Any]:
     duration_us: int | None = None
     if not isinstance(source, dict):
         errors.append("source must be an object")
+        source = {}
     else:
         for field in ("content_plan_id", "content_plan_hash"):
             if not nonempty(source.get(field)):
                 errors.append(f"source.{field} is required")
         if source.get("timebase") != "microseconds":
             errors.append("source.timebase must be microseconds")
+        if "text_authority" in source and source.get("text_authority") not in {
+            "final_visible_subtitle", "approved_subtitle_alignment", "edited_timeline_audio"
+        }:
+            errors.append("source.text_authority is invalid")
         duration_us = source.get("duration_us")
         if not is_int(duration_us) or duration_us <= 0:
             errors.append("source.duration_us must be a positive integer")
@@ -130,6 +136,41 @@ def validate(plan: Any) -> dict[str, Any]:
                     kinds.add(item["kind"])
             if not kinds & {"edited_audio", "waveform"}:
                 errors.append("source.evidence must include edited_audio or waveform evidence")
+
+    if plan.get("mode") == "final_draft_audit":
+        if source.get("text_authority") != "final_visible_subtitle":
+            errors.append("final_draft_audit alignment requires source.text_authority=final_visible_subtitle")
+        subtitle_reference = source.get("subtitle_reference")
+        if not isinstance(subtitle_reference, dict):
+            errors.append("final_draft_audit alignment requires source.subtitle_reference")
+        else:
+            for field in ("id", "hash"):
+                if not nonempty(subtitle_reference.get(field)):
+                    errors.append(f"source.subtitle_reference.{field} is required")
+
+    comparison = plan.get("comparison")
+    if comparison is not None:
+        if not isinstance(comparison, dict):
+            errors.append("comparison must be an object")
+        else:
+            for field in ("source_order_hash", "target_order_hash"):
+                if not nonempty(comparison.get(field)):
+                    errors.append(f"comparison.{field} is required")
+            remap_status = comparison.get("remap_status")
+            if remap_status not in REMAP_STATUSES:
+                errors.append("comparison.remap_status is invalid")
+            source_sequence = comparison.get("source_sequence")
+            target_sequence = comparison.get("target_sequence")
+            if not isinstance(source_sequence, list) or not isinstance(target_sequence, list):
+                errors.append("comparison source_sequence and target_sequence must be arrays")
+            elif source_sequence != target_sequence:
+                mapping = comparison.get("semantic_mapping")
+                if not isinstance(mapping, list) or not mapping:
+                    errors.append("comparison.semantic_mapping is required when order changes")
+                if remap_status == "not_required":
+                    errors.append("comparison.remap_status cannot be not_required when order changes")
+            if isinstance(plan.get("review"), dict) and plan["review"].get("status") == "approved" and remap_status not in {"not_required", "verified"}:
+                errors.append("approved alignment requires comparison.remap_status=not_required or verified")
 
     policy = plan.get("policy")
     if not isinstance(policy, dict):

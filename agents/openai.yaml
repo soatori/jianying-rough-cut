@@ -1,0 +1,4 @@
+interface:
+  display_name: "Jianying-Intelligent-Rough-Cut"
+  short_description: "Evidence-backed Jianying rough-cut and subtitle plans"
+  default_prompt: "Use $jianying-rough-cut to analyze speech-led source material and prepare a content-first rough-cut plan for Jianying."

@@ -22,6 +22,7 @@ COMPLETENESS_IMPACT = {"none", "review_required"}
 CONTENT_PHASE_STATUS = {"draft", "stable", "approved"}
 REFINEMENT_PHASE_STATUS = {"not_started", "draft", "approved"}
 ALIGNMENT_PHASE_STATUS = {"not_started", "draft", "stable", "approved"}
+WORKFLOW_MODES = {"content_edit", "final_draft_audit"}
 BOUNDARY_BASES = {
     "semantic_unit", "word_boundary", "phrase_boundary", "sentence_boundary",
     "pause", "waveform", "shot_boundary", "take_boundary", "manual_marker",
@@ -124,11 +125,18 @@ def _validate_completeness(
 def _validate_workflow(
     plan: dict[str, Any],
     errors: list[str],
-) -> tuple[str | None, str | None, str | None]:
+) -> tuple[str | None, str | None, str | None, str | None]:
     workflow = plan.get("workflow")
     if not isinstance(workflow, dict):
         errors.append("workflow must be an object")
-        return None, None, None
+        return None, None, None, None
+
+    mode = workflow.get("mode", "content_edit")
+    if mode not in WORKFLOW_MODES:
+        errors.append("workflow.mode is invalid")
+        mode = None
+    if mode == "final_draft_audit" and workflow.get("text_authority") != "final_visible_subtitle":
+        errors.append("workflow.text_authority must be final_visible_subtitle in final_draft_audit")
 
     content_status = workflow.get("content_pass")
     if content_status not in CONTENT_PHASE_STATUS:
@@ -153,7 +161,7 @@ def _validate_workflow(
         alignment_status = None
     if alignment_status in {"stable", "approved"} and content_status not in {"stable", "approved"}:
         errors.append("workflow.subtitle_alignment requires workflow.content_pass to be stable or approved")
-    return content_status, refinement_status, alignment_status
+    return content_status, refinement_status, alignment_status, mode
 
 
 def _validate_boundary(
@@ -298,7 +306,7 @@ def validate(plan: Any) -> dict[str, Any]:
             errors.append(f"{key} must be a list")
 
     timebase, duration, domain_unresolved, completeness_status = _validate_orientation(plan, errors)
-    content_phase_status, refinement_phase_status, alignment_phase_status = _validate_workflow(plan, errors)
+    content_phase_status, refinement_phase_status, alignment_phase_status, workflow_mode = _validate_workflow(plan, errors)
     decisions = plan.get("decisions", [])
     if not isinstance(decisions, list):
         errors.append("decisions must be a list")
@@ -359,6 +367,8 @@ def validate(plan: Any) -> dict[str, Any]:
                 )
             elif not flag_set & REVIEW_REQUIRED_FLAGS:
                 warnings.append(prefix + " should carry a review flag with approximate boundaries")
+        if workflow_mode == "final_draft_audit" and item.get("action") in DESTRUCTIVE_ACTIONS:
+            errors.append(prefix + " destructive actions are forbidden in final_draft_audit")
         if (
             completeness_status in {"partial", "unknown"}
             and item.get("action") in DESTRUCTIVE_ACTIONS
@@ -386,6 +396,7 @@ def validate(plan: Any) -> dict[str, Any]:
         "decision_count": len(decisions),
         "outline_unit_count": len((plan.get("outline") or {}).get("units", [])) if isinstance(plan.get("outline"), dict) else 0,
         "subtitle_alignment_status": alignment_phase_status,
+        "workflow_mode": workflow_mode,
     }
 
 

@@ -180,6 +180,32 @@ class PlanTests(unittest.TestCase):
         plan["decisions"][0]["pass"] = "refinement"
         self.assertTrue(validate(plan)["ok"])
 
+    def test_final_draft_audit_requires_final_subtitle_authority(self):
+        plan = self.base()
+        plan["workflow"] = {
+            "mode": "final_draft_audit",
+            "text_authority": "asr",
+            "content_pass": "stable",
+            "refinement_pass": "not_started",
+        }
+        result = validate(plan)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("text_authority" in error for error in result["errors"]))
+
+    def test_final_draft_audit_blocks_destructive_decisions(self):
+        plan = self.base()
+        plan["workflow"] = {
+            "mode": "final_draft_audit",
+            "text_authority": "final_visible_subtitle",
+            "content_pass": "stable",
+            "refinement_pass": "not_started",
+        }
+        plan["decisions"][0]["action"] = "delete"
+        plan["decisions"][0]["flags"] = ["human_review"]
+        result = validate(plan)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("destructive actions" in error for error in result["errors"]))
+
     def test_boundary_is_required(self):
         plan = self.base()
         del plan["decisions"][0]["boundary"]

@@ -143,6 +143,30 @@ class AlignmentPlanTests(unittest.TestCase):
         plan["policy"]["words_health"] = {"status": "unavailable", "role": "fallback"}
         self.assertTrue(MODULE.validate(plan)["ok"], MODULE.validate(plan))
 
+    def test_final_draft_audit_requires_final_subtitle_authority(self):
+        plan = valid_plan()
+        plan["mode"] = "final_draft_audit"
+        plan["source"]["text_authority"] = "asr"
+        plan["source"]["subtitle_reference"] = {"id": "subtitle-ref", "hash": "sha256:subtitle"}
+        self.assertFalse(MODULE.validate(plan)["ok"])
+
+    def test_changed_order_requires_verified_mapping_for_approved_plan(self):
+        plan = valid_plan()
+        plan["comparison"] = {
+            "source_order_hash": "sha256:source",
+            "target_order_hash": "sha256:target",
+            "source_sequence": ["U1", "U2"],
+            "target_sequence": ["U2", "U1"],
+            "remap_status": "verified",
+            "semantic_mapping": [
+                {"source": "U1", "target": "U1"},
+                {"source": "U2", "target": "U2"},
+            ],
+        }
+        self.assertTrue(MODULE.validate(plan)["ok"], MODULE.validate(plan))
+        plan["comparison"]["remap_status"] = "pending"
+        self.assertFalse(MODULE.validate(plan)["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

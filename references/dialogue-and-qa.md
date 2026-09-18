@@ -16,6 +16,23 @@ For each question identify:
 - reasoning, example, qualification, and follow-up;
 - where the next question actually begins.
 
+## Short-video semantic roles
+
+Use the following role vocabulary when grouping concise, publishable units. A group may carry one primary role and optional secondary roles, but role labels must describe the communication function rather than the visual treatment:
+
+`hook`, `background`, `question`, `reaction`, `answer`, `evidence`, `technical_detail`, `contrast`, `benefit`, `summary`, `cta`.
+
+Every highlight group records:
+
+- stable semantic-unit IDs and the final subtitle references that express them;
+- the preceding/following context needed to understand the group;
+- speaker ID and per-unit function;
+- why the group earns short-video emphasis;
+- whether it contains a number, model, brand, unit, condition, negation, comparison, or technical fact;
+- whether it requires human listening before any downstream packaging.
+
+The role is an editorial handoff only. It does not choose a flower-text template, position, motion, or sound.
+
 A host's long framing may contain the guest's eventual answer. When the guest states the same point fully, retain the actual question and prefer the guest's complete expression. Preserve host context that the answer otherwise lacks.
 
 ## Multiple respondents
