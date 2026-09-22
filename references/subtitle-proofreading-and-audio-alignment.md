@@ -1,23 +1,43 @@
 # Subtitle proofreading and audio alignment
 
-This stage runs after the rough-cut content pass has been executed and before packaging begins. It corrects the current Jianying-recognized subtitles against the edited timeline; it is not a packaging operation.
+This stage runs after the rough-cut content pass has been executed and before packaging begins. It is not a packaging operation and it has two explicit input modes:
+
+- `existing`: the current visible subtitle list is authoritative for wording,
+  order, and segmentation; waveform evidence supplies boundary candidates.
+- `generate`: the timeline has no subtitles and an external/local transcript
+  supplies timed segments or words; dictionary correction changes wording only,
+  then waveform evidence supplies boundary candidates.
+
+The rough-cut skill consumes application-independent inputs only. It does not
+read or write a Jianying project and does not call `jianying-editor`. If the
+current subtitle state must be obtained from an encrypted draft, stop at this
+boundary and request an explicit read-only project probe outside this skill.
 
 ## Inputs and order
 
-1. Save and probe the current edited timeline through `jianying-editor`.
-2. Reconstruct the edited timeline audio from the current segment order, source ranges, speed, and handles where applicable.
-3. Read the current recognized text and compare it with the actual speech.
-4. Correct names, terms, numbers, units, models, negation, conditions, causality, and ASR segmentation.
-5. Use listening and waveform evidence to propose boundaries.
-6. Review the complete subtitle list in context, then output an application-independent `subtitle_alignment_plan`.
-7. After human approval, let `jianying-editor` resolve the semantic ranges to current draft segments and apply the plan.
-8. Independently read back and validate before marking `subtitle_alignment=approved`.
+1. Establish the edited-timeline audio and subtitle-state evidence as
+   application-independent inputs. A missing or unreadable subtitle state is
+   unknown, not proof that the timeline has no subtitles.
+2. For `existing`, read the current visible subtitle text, order, segmentation,
+   and saved ranges; compare them with the actual speech. Do not rebuild them
+   from ASR or an older subtitle copy.
+3. For `generate`, require timed `segment`/`word` transcript evidence. Correct
+   names, terms, numbers, units, models, negation, conditions, causality, and
+   semantic segmentation without changing token or segment timestamps.
+4. Use the saved edited audio's waveform evidence to locate candidate
+   boundaries; ordinary ASR timing is not a final boundary source.
+5. Review the complete subtitle list in context, then output an
+   application-independent `subtitle_alignment_plan`; generated runs may also
+   output an UTF-8 SRT for preview.
+6. Keep `review_status=pending` until human listening and plan approval. Any
+   later project read/write or application handoff is outside this skill's
+   execution boundary.
 
 If a later rough-cut change changes source order, source range, speed, or duration, repeat this stage. A packaging-only style change does not require full re-alignment unless it changes subtitle timing or segmentation.
 
-## Anchor units, not seconds
+## Existing-timeline anchor units, not seconds
 
-A subtitle screen stores a list of stable word/semantic-unit references plus the display text — **not** absolute seconds. Post-cut time is *computed* each pass from (token time in the source) + (which ranges the edit list kept):
+For the existing-timeline/token-map path, a subtitle screen stores a list of stable word/semantic-unit references plus the display text — **not** absolute seconds. Post-cut time is *computed* each pass from (token time in the source) + (which ranges the edit list kept):
 
 - token's source time → already in the time-coded transcript;
 - which segments survive → in the content decision plan / edit list;
@@ -26,6 +46,11 @@ A subtitle screen stores a list of stable word/semantic-unit references plus the
 Do not re-run ASR on the edited video to recover timing: it re-listens to the same speech, costs time, and forces every proper noun to be re-corrected. Do not stitch the **original** subtitle cues head-to-tail along the edit list either — those cue boundaries were cut on the original's pauses, so pasted after an edit they drift further and further off. Only the per-token mapping survives editing intact.
 
 Subtitles may legitimately differ in text from the transcript (punctuation, removed fillers, official spellings); that divergence is intentional. The transcript answers "what was said"; the subtitle answers "what the viewer reads".
+
+The no-subtitle generation path has no Jianying token IDs. It uses the supplied
+timed transcript segments/words as semantic units, preserves their timestamps
+during dictionary correction, and emits a pending waveform candidate plan plus
+an optional SRT preview.
 
 ## Segmentation ladder
 
@@ -53,7 +78,13 @@ Record `mode`, `basis`, evidence, confidence, and review status for both the sta
 
 Waveform and silence thresholds locate candidates; they do not authorize deletion or splitting by themselves. The current project may use values such as a 10ms hop, 25ms window, 120ms pause floor, and 350ms cap, but those are configurable detector defaults.
 
-Word-level timestamps are a cross-check. If their health check fails or the text and timing disagree, fall back to audio, semantics, and manual listening rather than treating word times as authoritative.
+Word-level timestamps are a cross-check only for `existing`. In `generate`,
+timed transcript tokens are required to construct the semantic units, but the
+waveform still controls boundary candidates and review. If timing health fails
+or text and timing disagree, block generation or fall back to manual evidence;
+do not silently treat plain text as timed input. The fixed script routes are
+`subtitle-align` for existing subtitles and `subtitle-generate` for no-subtitle
+generation. Both emit review-pending plans and do not write the draft.
 
 ## Deprecated practices
 

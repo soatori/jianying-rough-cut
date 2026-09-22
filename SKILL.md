@@ -1,29 +1,34 @@
 ---
 name: jianying-rough-cut
-description: "Use for 剪映口播、访谈、教程、讲座等 speech-led video content passes: understand the source, make evidence-backed keep/delete/shorten/reorder decisions, and produce auditable rough-cut and subtitle-alignment plans. Hand approved plans to jianying-editor for project execution. Do not add packaging effects or make unsupported destructive decisions from ASR alone."
+description: "Use for 剪映口播、访谈、教程、讲座等 speech-led content analysis, rough-cut decisions, and waveform-first subtitle plans. Preserve manual subtitle text, order, and segmentation; never write Jianying projects or make destructive decisions from ASR alone."
 ---
 
 # Jianying-Intelligent-Rough-Cut
 
-This is the content-intelligence layer for 剪映 speech-led edits. It listens to and understands the source before deciding what the audience should hear, protects technical meaning and continuity, and produces an auditable content plan. It may coordinate with `jianying-editor` for probing and execution of an approved plan, but it never directly mutates a Jianying draft.
+This is the content-intelligence layer for 剪映 speech-led edits. It listens to and understands the source before deciding what the audience should hear, protects technical meaning and continuity, and produces an auditable content plan. Its subtitle workflow supports both current-subtitle alignment and no-subtitle generation, but it only consumes application-independent evidence: it never reads or writes a Jianying draft or calls `jianying-editor`.
 
 ## Positioning
 
 - **Owns:** source completeness and orientation, the transcript correction gate (fix misheard text before deciding), semantic segmentation, speaker and Q&A structure, protected facts, Pass 1 content rough-cut decisions, Pass 2 speech refinement, subtitle proofreading/alignment after the edited timeline is saved, and the Pass 3 retrospective that turns human corrections into dictionary, preference, and case-law learning.
 - **Produces:** an application-independent content decision plan, a transcript correction table plus unresolved-term list, a repeated-attempt rollup, tiered verification labels, a separate subtitle-alignment plan when that stage is requested, and a Pass 3 learning record.
-- **Handoff:** `jianying-editor` resolves approved ranges against the current saved draft and performs safe project operations; `jianying-packaging` starts only after content and subtitle alignment are stable or approved.
+- **Handoff:** an external, explicitly approved handoff may let `jianying-editor` resolve approved ranges against the current saved draft; `jianying-packaging` starts only after content and subtitle alignment are stable or approved.
 - **Does not own:** direct Jianying project writes, flower text, upper-track styling, templates, transitions, overlays, sound effects, or non-speech montage editing. Non-goal: this layer borrows editorial *method* only and never re-implements a proprietary editing runtime (a persistent service, a workbench/Studio UI, a revision-compare-and-swap ledger, forced cloud-only ASR, or a word-id cut store). Project state, probing, and every write belong to `jianying-editor`; this skill only emits validated, application-independent plans.
 
 “Intelligent” means evidence-backed semantic judgment with reviewable uncertainty—not blind deletion based on transcript text, punctuation, or pause length.
 
-The surrounding workflow is `jianying-rough-cut → jianying-editor → subtitle alignment → jianying-packaging`. An orchestration layer may call `jianying-editor` to probe the saved edited timeline and to apply an approved plan, but this skill itself never writes a draft. Use [references/workflow-state.md](references/workflow-state.md) for the shared handoff states.
+The surrounding workflow may be `jianying-rough-cut → (explicit handoff) jianying-editor → jianying-packaging`. The rough-cut skill itself does not probe a saved draft, resolve encrypted project state, or apply a plan. Use [references/workflow-state.md](references/workflow-state.md) for the shared handoff states.
+
+Project-specific conventions must be supplied through an external project case reference. This reusable Skill does not bundle a user's copy, timing, track, or style decisions.
 
 ## Operating modes
 
 Use one explicit mode for each request:
 
 - `content_edit`: analyze source audio/video, decide content structure, and produce an auditable rough-cut or subtitle-alignment plan. This is the default mode.
+- `subtitle_alignment`: align an existing subtitle list or generate review-pending subtitles from a timed transcript against edited-timeline audio. This is a standalone mode: do not run content-cut decisions, probe a Jianying draft, or write a project.
 - `final_draft_audit`: inspect an already saved final or near-final timeline without proposing edits. The current rendered/visible final subtitle is the report's wording authority; ASR, old subtitles, and internal fields are evidence for discrepancies only.
+
+In `subtitle_alignment`, establish application-independent audio and subtitle-state evidence, then use the subtitle route in [references/subtitle-proofreading-and-audio-alignment.md](references/subtitle-proofreading-and-audio-alignment.md). Do not force a full content-orientation or refinement pass unless the user also requested content editing.
 
 In `final_draft_audit`:
 
@@ -31,7 +36,7 @@ In `final_draft_audit`:
 - mark subtitle/audio disagreements, old-wording remnants, and uncertain technical terms as `human_review`;
 - report semantic groups, ordering, packaging mismatches, and evidence only;
 - do not emit delete, shorten, reorder, join, or write-back instructions;
-- validate the report with `scripts/validate_analysis_report.py`.
+- validate the report with `python scripts/roughcut_tool.py validate report <report.json>`.
 
 Use [references/analysis-report-schema.md](references/analysis-report-schema.md) for the report contract.
 
@@ -55,7 +60,7 @@ Tag every reported conclusion with a verification tier (`plan_consistency` / `vi
 
 ## Mandatory workflow
 
-The following order is required. Do not propose definite deletion, shortening, deduplication, or reordering before the correction gate and the orientation and outline stages are complete.
+For `content_edit`, the following order is required. Do not propose definite deletion, shortening, deduplication, or reordering before the correction gate and the orientation and outline stages are complete. For `subtitle_alignment`, skip the content-cut stages and begin at the subtitle stage after the input-state audit.
 
 1. Establish the requested outcome, target audience, platform/pace, duration constraint, and preservation requirements when they affect decisions.
 2. Read or listen through the complete available material, perform the material-completeness audit, and record evidence sources and limitations.
@@ -69,8 +74,9 @@ The following order is required. Do not propose definite deletion, shortening, d
 10. Audit the proposed cut against the complete source for missing context, altered claims, incorrect question/answer pairing, out-of-order logic, technical-detail loss, and domain terminology loss.
 11. Mark the content pass as draft, stable, or approved. Only when it is stable or approved, produce a separate refinement pass for fillers, false starts, repeated openings, stutters, redundant restatements, excess pauses, tiny audio remnants, and hard joins. Run it as five single-criterion scans (one criterion per read) in [references/speech-cleanup.md](references/speech-cleanup.md), apply the case-law in [references/cut-case-law.md](references/cut-case-law.md), and honor the boundary rules in [references/audio-boundaries.md](references/audio-boundaries.md).
 12. Output the independent content decision plan described in [references/decision-plan-schema.md](references/decision-plan-schema.md). Do not output an application-specific execution handoff.
-13. After the content pass has been executed and the current edited timeline is saved, run the subtitle proofreading and audio-alignment stage in [references/subtitle-proofreading-and-audio-alignment.md](references/subtitle-proofreading-and-audio-alignment.md). Validate the separate [references/alignment-plan.md](references/alignment-plan.md) contract with `scripts/validate_alignment_plan.py` before handing it to `jianying-editor`.
+13. After the content pass has been executed, or directly for `subtitle_alignment`, run the subtitle proofreading and audio-alignment stage in [references/subtitle-proofreading-and-audio-alignment.md](references/subtitle-proofreading-and-audio-alignment.md). For an existing subtitle list, use `python scripts/roughcut_tool.py subtitle-align --audio <edited-audio> --subtitles <current-subtitles> --out <plan.json>`; for a timeline with no subtitles, use `python scripts/roughcut_tool.py subtitle-generate --audio <edited-audio> --transcript <timed-transcript> --out <plan.json> [--srt-out <preview.srt>]`. Both paths require edited-timeline audio or precomputed waveform evidence; unreadable subtitle state and missing audio block before waveform analysis. The generated path requires timed `segment`/`word` evidence and keeps `review_status=pending`. In both paths waveform evidence is the boundary authority; `build-alignment` remains a token-map arithmetic helper and cannot by itself prove alignment. Validate the separate [references/alignment-plan.md](references/alignment-plan.md) contract with `python scripts/roughcut_tool.py validate alignment <plan.json>`. Hand off only after human listening and approval; if that handoff would involve `jianying-editor`, ask for explicit confirmation first.
 14. After the human reviews the result, run the Pass 3 retrospective in [references/preference-and-dictionary.md](references/preference-and-dictionary.md): diff the approved proposal against the final plan, and archive taste differences to the preference file, corrected proper nouns to the dictionary, and rule gaps to the pending-cases drawer. This stage records learning only; it never mutates a draft.
+15. When comparing completed stages, run `python scripts/roughcut_tool.py stage-diff --source <source.json> --target <target.json>`. Record display-only text changes separately from semantic/subtitle changes, and annotate excluded compound intervals without opening them.
 
 ## Content orientation gate
 
@@ -122,11 +128,25 @@ Passes 1 and 2 are the only cutting passes; Pass 3 does not edit content. After 
 - When material is partial or unknown, do not mark an affected delete, shorten, reorder, or join as high-confidence. Add a review flag to lower-confidence candidates.
 - When a decision touches a domain-sensitive fact, terminology, number, unit, condition, or entity, record that sensitivity and retain the evidence.
 - Subtitle recognition text is evidence, not truth. Correct current saved subtitles against edited-timeline audio before packaging; do not use an older subtitle copy as the write source.
+- In `existing`, current visible subtitle text, order, and segmentation are authoritative; ASR is cross-check evidence only. In `generate`, require timed transcript evidence, apply dictionary corrections to text only, and never alter token or semantic-unit timestamps during correction.
 - Record `audio`, `picture`, or `manual` mode plus boundary basis, evidence, confidence, and review state for both ends of every aligned subtitle unit (see [references/alignment-plan.md](references/alignment-plan.md)).
 - When the workflow mode is `final_draft_audit`, declare `final_visible_subtitle` as the text authority and keep all ASR/final-text differences reviewable; do not turn them into corrections inside this skill.
 - Waveform thresholds locate candidates; they never authorize deletion or splitting by themselves. Word-level timestamps are cross-check evidence and require a health check.
 
+## Script-first execution
+
+Use [references/scripted-workflow.md](references/scripted-workflow.md) as the
+fixed routing table. The `workflow` command accepts `subtitle_mode=auto`,
+`existing`, or `generate`; it runs deterministic preparation in one process and
+reuses one waveform pass for pause scanning and subtitle alignment. `auto` is
+fail-closed when subtitle state is missing or ambiguous. The human still owns
+semantic orientation, unresolved technical terms, contextual listening, edge
+approval, and plan approval. This skill does not call `jianying-editor`, read a
+Jianying project, or write back a draft.
+
 ## Required outputs
+
+`content_edit` produces the full content-analysis outputs below. `subtitle_alignment` produces the input/state evidence, a separate pending `subtitle_alignment_plan`, and an optional UTF-8 SRT review artifact; it does not need to fabricate content-orientation or cut-decision fields.
 
 - source/evidence summary and limitations;
 - material-completeness status, checked sources, missing items, supporting evidence, and review impact;
@@ -141,6 +161,8 @@ Passes 1 and 2 are the only cutting passes; Pass 3 does not edit content. After 
 - repeated-attempt rollup (idea recorded more than once: times said, take kept, takes removed, risk);
 - each conclusion tagged with its verification tier (`plan_consistency` / `visual_frame` / `human_listening`) and never upgraded beyond its evidence;
 - after human review, the Pass 3 learning record: restored cuts, missed cuts, and the dictionary/preference/pending-case updates they produced;
+- a generic `learning_report` with evidence level, generalizability, anti-pattern, promotion status, and an optional external `case_ref`;
+- a stage-diff report with order fingerprints, semantic mapping, text-authority changes, packaging additions, and compound-exclusion annotations;
 - sequence, speaker, overlap, and continuity issues;
 - semantic highlight groups using the shared roles `hook`, `background`, `question`, `reaction`, `answer`, `evidence`, `technical_detail`, `contrast`, `benefit`, `summary`, and `cta`;
 - for each highlight group: semantic-unit references, context dependency, speaker/function, short-video value, protected-fact flags, and whether human listening is required;
@@ -152,4 +174,10 @@ Passes 1 and 2 are the only cutting passes; Pass 3 does not edit content. After 
 - an independent content decision plan with no application-specific execution fields.
 - a separate application-independent `subtitle_alignment_plan` with corrected text, semantic unit IDs, audio/picture/manual boundary decisions, evidence, and re-alignment triggers.
 
-Run `scripts/validate_plan.py <plan.json>` to validate the content decision plan before presenting it for review.
+Run `python scripts/roughcut_tool.py validate plan <plan.json>` to validate the content decision plan before presenting it for review.
+
+## Tool layer
+
+`scripts/roughcut_tool.py` is the application-independent rough-cut CLI. Its importable functions live under `scripts/roughcut_tools/`; they audit material completeness, apply confirmed dictionary corrections, map source tokens into playback time, produce conservative cleanup candidates, extract waveform evidence, build waveform-first subtitle-alignment candidates, generate timed-transcript subtitle units and UTF-8 SRT previews, compare semantic order, produce multi-stage `stage-diff` reports, emit external-case `learning_report` records, run the fixed preparation workflow, and generate retrospective reports. It never writes a Jianying draft, never reruns ASR for subtitle timing, and never converts a candidate into an automatic delete. For high-precision subtitle work, waveform evidence is the boundary authority; ASR word timing is cross-check evidence for existing subtitles and required input evidence (but not boundary authority) for generation.
+
+The CLI returns a JSON report envelope by default (`data`, `errors`, `input_errors`, `warnings`, and status fields), accepts a previous complete report or raw data JSON, and supports `--format text` for humans. Exit code `0` is a usable report including review warnings, `1` is an evidence/validation/safety block, and `2` is a malformed JSON, missing/unreadable file, argument, or output-path error. A playback map is fail-closed: every token is kept, explicitly deleted, or reported unresolved; scans require canonical `units`; pause scans require audio or precomputed pause evidence. Candidate scans emit only `review`/`needs_listen` evidence and never automatic delete instructions.

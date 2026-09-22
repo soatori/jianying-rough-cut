@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-import argparse
-import json
 import math
-from pathlib import Path
 from typing import Any
-
 
 ACTIONS = {"keep", "delete", "shorten", "reorder", "join", "review"}
 DESTRUCTIVE_ACTIONS = {"delete", "shorten", "reorder", "join"}
@@ -17,6 +13,11 @@ DOMAIN_STATUS = {"identified", "uncertain", "not_applicable"}
 REVIEW_FLAGS = {"needs_listen", "needs_context", "low_confidence", "human_review"}
 REVIEW_REQUIRED_FLAGS = {"needs_context", "human_review", "low_confidence"}
 REJECTED_FIELDS = {"execution_handoff", "keep_blocks"}
+APPLICATION_FIELDS = {
+    "draft_path", "timeline", "timeline_id", "track_id", "track_type", "segment_id", "material_id",
+    "replica_paths", "replica_manifest", "encryption", "json_path", "target_locator", "source_locator",
+    "write", "write_back", "apply", "execution", "clone", "project_path", "timeline_path",
+}
 COMPLETENESS_STATUS = {"complete", "partial", "unknown"}
 COMPLETENESS_IMPACT = {"none", "review_required"}
 CONTENT_PHASE_STATUS = {"draft", "stable", "approved"}
@@ -37,6 +38,17 @@ def _is_number(value: Any) -> bool:
 
 def _nonempty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _find_application_fields(value: Any, path: str, errors: list[str]) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in APPLICATION_FIELDS:
+                errors.append(f"{path}.{key}: application-specific field is not allowed")
+            _find_application_fields(item, f"{path}.{key}", errors)
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _find_application_fields(item, f"{path}[{index}]", errors)
 
 
 def _validate_string_array(
@@ -297,6 +309,7 @@ def validate(plan: Any) -> dict[str, Any]:
     for key in REJECTED_FIELDS:
         if key in plan:
             errors.append(f"application-specific field is not allowed: {key}")
+    _find_application_fields(plan, "plan", errors)
     if not isinstance(plan.get("evidence"), list):
         errors.append("evidence must be a list")
     if not isinstance(plan.get("goal"), dict):
@@ -328,7 +341,9 @@ def validate(plan: Any) -> dict[str, Any]:
         decision_pass = item.get("pass")
         if decision_pass not in PASSES:
             errors.append(prefix + ".pass must be content or refinement")
-        if item.get("action") not in ACTIONS:
+        action = item.get("action")
+        action_valid = isinstance(action, str) and action in ACTIONS
+        if not action_valid:
             errors.append(prefix + ".action is invalid")
         if item.get("confidence") not in CONFIDENCE:
             errors.append(prefix + ".confidence is invalid")
@@ -360,18 +375,18 @@ def validate(plan: Any) -> dict[str, Any]:
                 errors.append(
                     prefix + ".pass refinement requires workflow.refinement_pass to be draft or approved"
                 )
-        if item.get("action") in DESTRUCTIVE_ACTIONS and precision == "approximate":
+        if action_valid and action in DESTRUCTIVE_ACTIONS and precision == "approximate":
             if item.get("confidence") == "high":
                 errors.append(
                     prefix + " cannot be high-confidence with approximate boundary precision"
                 )
             elif not flag_set & REVIEW_REQUIRED_FLAGS:
                 warnings.append(prefix + " should carry a review flag with approximate boundaries")
-        if workflow_mode == "final_draft_audit" and item.get("action") in DESTRUCTIVE_ACTIONS:
+        if workflow_mode == "final_draft_audit" and action_valid and action in DESTRUCTIVE_ACTIONS:
             errors.append(prefix + " destructive actions are forbidden in final_draft_audit")
         if (
             completeness_status in {"partial", "unknown"}
-            and item.get("action") in DESTRUCTIVE_ACTIONS
+            and action_valid and action in DESTRUCTIVE_ACTIONS
         ):
             if item.get("confidence") == "high":
                 errors.append(
@@ -381,9 +396,9 @@ def validate(plan: Any) -> dict[str, Any]:
                 warnings.append(
                     prefix + " should carry a review flag while material completeness is not complete"
                 )
-        if item.get("action") in DESTRUCTIVE_ACTIONS and not _nonempty_string(item.get("expected_join")):
+        if action_valid and action in DESTRUCTIVE_ACTIONS and not _nonempty_string(item.get("expected_join")):
             warnings.append(prefix + " changes continuity but has no expected_join")
-        if domain_unresolved and item.get("domain_sensitive") and item.get("action") in DESTRUCTIVE_ACTIONS:
+        if domain_unresolved and item.get("domain_sensitive") and action_valid and action in DESTRUCTIVE_ACTIONS:
             if item.get("confidence") == "high":
                 errors.append(prefix + " cannot be high-confidence while domain-sensitive context is unresolved")
             elif not flag_set & REVIEW_REQUIRED_FLAGS:
@@ -400,15 +415,3 @@ def validate(plan: Any) -> dict[str, Any]:
     }
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("plan")
-    args = parser.parse_args()
-    plan = json.loads(Path(args.plan).read_text(encoding="utf-8-sig"))
-    result = validate(plan)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if result["ok"] else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -3,10 +3,21 @@
 Validate with:
 
 ```powershell
-python scripts/validate_alignment_plan.py <alignment-plan.json>
+python scripts/roughcut_tool.py validate alignment <alignment-plan.json>
 ```
 
 The plan is application-independent. It may contain semantic unit IDs, corrected text, microsecond ranges, audio/picture/manual boundary choices, evidence, confidence, and review status. It must not contain Jianying track IDs, segment IDs, material IDs, draft paths, replica paths, encryption fields, or JSON write instructions.
+
+For the two subtitle paths, `source.text_authority` and
+`source.subtitle_origin` make the input contract explicit. Existing subtitles
+use `text_authority: "current_visible_subtitle"` and
+`subtitle_origin: "current_timeline"`; generated subtitles use
+`text_authority: "generated_transcript"` and
+`subtitle_origin: "generated_transcript"`. In the existing path, ASR can only
+be cross-check evidence. In the generated path, dictionary corrections may
+change text but not the timed tokens or semantic-unit times. An SRT exported
+from the final plan is a UTF-8 review artifact and is not an application write
+source.
 
 For a read-only final-draft audit, add `mode: "final_draft_audit"` and set `source.text_authority` to `final_visible_subtitle`. ASR and older subtitle text remain evidence only. Add `source.subtitle_reference` with an ID, hash, and approved/stable status. If source and target order differs, add `comparison` with order hashes, semantic-unit sequences, a mapping list, and `remap_status`; approved output requires `not_required` or `verified`.
 
@@ -21,6 +32,8 @@ Minimal shape:
     "content_plan_hash": "sha256:...",
     "timebase": "microseconds",
     "duration_us": 12000000,
+    "text_authority": "current_visible_subtitle",
+    "subtitle_origin": "current_timeline",
     "evidence": [{"kind": "edited_audio", "status": "available"}]
   },
   "policy": {
@@ -36,7 +49,29 @@ Minimal shape:
     "words_health": {"status": "valid", "role": "cross_check"}
   },
   "subtitle_units": [],
-  "review": {"status": "draft"},
+  "review": {"status": "pending"},
   "recheck_if": ["rough-cut changes source order or duration"]
 }
 ```
+
+The existing-subtitle token-map helper remains chained from the canonical playback map:
+
+```text
+playback-map -> scan -> build-alignment -> validate alignment
+```
+
+`build-alignment` requires verified token mapping and canonical `units`; it calculates every new `start_us/end_us` from edited token times. Any old subtitle `start_us/end_us` is retained only under evidence such as `previous_range`, never copied to the new cue. Each unit has a stable `id`, `semantic_unit_id`, `review_status: "pending"`, and token-mapping evidence; boundaries use validator-supported `basis: "word_boundary"` and `review: "pending"`. Missing tokens, duplicate semantic IDs, non-contiguous mapped intervals, unresolved remaps, or missing duration/evidence block the generated report, which is self-checked by the alignment validator.
+
+The no-subtitle route is separate and does not require Jianying token IDs:
+
+```text
+timed-transcript -> dictionary text correction -> subtitle-generate units
+                 -> one waveform pass -> subtitle_alignment_plan -> UTF-8 SRT preview
+```
+
+The supplied segment/word timestamps seed the generated units, while waveform
+evidence supplies boundary candidates and human review remains pending.
+
+Subtitle units must remain in playback order with non-decreasing `start_us` and
+`end_us`. The plan validator and SRT renderer reject a later unit whose end
+time moves backward, even when each individual range is valid.

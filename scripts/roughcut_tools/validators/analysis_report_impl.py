@@ -3,11 +3,7 @@
 
 from __future__ import annotations
 
-import argparse
-import json
-from pathlib import Path
 from typing import Any
-
 
 REPORT_TYPES = {"final_draft_audit", "timeline_comparison"}
 TEXT_AUTHORITIES = {"final_visible_subtitle", "approved_subtitle_alignment"}
@@ -20,8 +16,10 @@ SEMANTIC_ROLES = {
 APPLICATION_KEYS = {
     "draft_path", "timeline", "track_id", "track_type", "segment_id", "material_id",
     "asset_id", "replica_paths", "replica_manifest", "encryption", "json_path",
-    "target_locator", "source_locator", "execution_handoff", "write_back", "apply",
+    "target_locator", "source_locator", "execution_handoff", "write", "write_back", "apply", "execution",
+    "clone", "project_path", "timeline_path",
 }
+DESTRUCTIVE_ACTIONS = {"delete", "shorten", "reorder", "join", "write_back", "execution", "apply"}
 
 
 def nonempty(value: Any) -> bool:
@@ -52,6 +50,21 @@ def find_application_keys(value: Any, path: str, errors: list[str]) -> None:
     elif isinstance(value, list):
         for index, item in enumerate(value):
             find_application_keys(item, f"{path}[{index}]", errors)
+
+
+def find_destructive_actions(value: Any, path: str, errors: list[str]) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "action" and isinstance(item, str) and item in DESTRUCTIVE_ACTIONS:
+                errors.append(f"{path}.{key}: destructive action is not allowed in final_draft_audit")
+            if key in {"delete", "shorten", "reorder", "join"}:
+                errors.append(f"{path}.{key}: destructive action field is not allowed in final_draft_audit")
+            if key in {"write_back", "execution", "apply"}:
+                errors.append(f"{path}.{key}: destructive/application field is not allowed in final_draft_audit")
+            find_destructive_actions(item, f"{path}.{key}", errors)
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            find_destructive_actions(item, f"{path}[{index}]", errors)
 
 
 def validate(report: Any) -> dict[str, Any]:
@@ -185,6 +198,7 @@ def validate(report: Any) -> dict[str, Any]:
         string_list("review.flags", review.get("flags", []), errors)
 
     if report.get("report_type") == "final_draft_audit":
+        find_destructive_actions(report, "report", errors)
         forbidden = {"delete", "shorten", "reorder", "join", "write_back", "execution"}
         present = forbidden.intersection(report.keys())
         if present:
@@ -193,20 +207,3 @@ def validate(report: Any) -> dict[str, Any]:
             warnings.append("timeline comparison is blocked; downstream packaging must stop")
 
     return {"ok": not errors, "errors": errors, "warnings": warnings, "semantic_group_count": len(groups)}
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("report")
-    args = parser.parse_args()
-    try:
-        report = json.loads(Path(args.report).read_text(encoding="utf-8-sig"))
-        result = validate(report)
-    except Exception as exc:  # pragma: no cover - defensive CLI boundary
-        result = {"ok": False, "errors": [f"validation failed safely: {type(exc).__name__}: {exc}"], "warnings": []}
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if result["ok"] else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

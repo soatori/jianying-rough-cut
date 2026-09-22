@@ -4,7 +4,7 @@ Every claim this skill makes carries the weakest tier its evidence can support. 
 
 | Tier | Backed by | Does NOT mean |
 | --- | --- | --- |
-| `plan_consistency` PASS | the decision plan is internally consistent and validates (`validate_plan.py` / `validate_alignment_plan.py`): ranges, timebase, boundaries, IDs, gates | the wording or join actually sounds right |
+| `plan_consistency` PASS | the decision plan is internally consistent and validates (`roughcut_tool.py validate plan/alignment`): ranges, timebase, boundaries, IDs, gates | the wording or join actually sounds right |
 | `visual_frame` PASS | a saved/probed timeline shows the visible result — subtitle text, position, timing — matching intent, read back from the current draft by `jianying-editor` | the audio was actually listened to |
 | `human_listening` PASS | a person actually listened to the affected spans and recorded the verdict | anything inferred from transcript, waveform, DOM, screenshot, or media probe |
 

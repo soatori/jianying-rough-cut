@@ -3,8 +3,7 @@ import importlib.util
 import unittest
 from pathlib import Path
 
-
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "validate_alignment_plan.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "roughcut_tools" / "validators" / "alignment_plan_impl.py"
 SPEC = importlib.util.spec_from_file_location("validate_alignment_plan", SCRIPT)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError(f"cannot load {SCRIPT}")
@@ -131,6 +130,20 @@ class AlignmentPlanTests(unittest.TestCase):
         plan = valid_plan()
         plan["subtitle_units"][0]["end_us"] = 50_000_000  # duration_us is 10_000_000
         self.assertFalse(MODULE.validate(plan)["ok"])
+
+    def test_subtitle_unit_end_times_must_be_non_decreasing(self):
+        plan = valid_plan()
+        second = copy.deepcopy(plan["subtitle_units"][0])
+        second.update({
+            "id": "S2",
+            "semantic_unit_id": "U2",
+            "start_us": 1_000_000,
+            "end_us": 1_500_000,
+        })
+        plan["subtitle_units"].append(second)
+        result = MODULE.validate(plan)
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any("non-decreasing across subtitle units" in error for error in result["errors"]))
 
     def test_words_health_role_must_be_valid(self):
         plan = valid_plan()

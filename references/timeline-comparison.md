@@ -21,6 +21,15 @@ Both share one root: the criterion was fine, but the *input lied, silently*. The
 4. Classify each change as `copied`, `shortened`, `deleted`, `reordered`, `packaged`, or `appended_media`.
 5. Only then compare time ranges and visual/audio layers.
 
+The `stage-diff` report extends this order with `text_change` values of
+`unchanged`, `display_only`, or `semantic_or_subtitle_change`. A display-only
+packaging shortening never replaces the final subtitle authority; a semantic or
+subtitle change returns to rough-cut/subtitle-alignment review.
+
+If a top-level observation declares compound exclusions, record their intervals
+and annotate overlapping units. Do not recurse into the compound content or
+invent missing semantic units.
+
 Subtitle rows and old effect timestamps are not stable identifiers. A changed order or duration invalidates direct reuse of an old timecode.
 
 ## Remapping contract
@@ -33,6 +42,8 @@ Each mapped unit uses a stable semantic-unit ID plus a final-subtitle reference.
 - `blocked`: the unit cannot be safely mapped.
 
 Packaging may receive only `not_required` or `verified` mappings for a final plan. `pending` and `blocked` are report states, not execution permission.
+
+The comparison tool emits `semantic_mapping` as a list of `{ "source": "...", "target": "..." }` entries. A legacy dictionary is accepted only as input and is normalized to that list. `verified` additionally requires unique source/target sequences, one-to-one IDs, complete coverage of all common semantic units, valid IDs, and order hashes that match the supplied sequences. Deletions, additions, duplicate targets, missing mappings, and hash mismatches remain `pending` or `blocked`.
 
 ## Audit-only boundary
 

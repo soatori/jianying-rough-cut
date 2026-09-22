@@ -3,7 +3,7 @@
 Validate a report with:
 
 ```powershell
-python scripts/validate_analysis_report.py <report.json>
+python scripts/roughcut_tool.py validate report <report.json>
 ```
 
 The report is read-only and application-independent. Its text authority is the current rendered final subtitle, not ASR or an older subtitle copy.

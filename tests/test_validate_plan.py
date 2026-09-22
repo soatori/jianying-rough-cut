@@ -1,17 +1,12 @@
 import copy
-import importlib.util
+import sys
 import unittest
 from pathlib import Path
 
-
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "validate_plan.py"
-SPEC = importlib.util.spec_from_file_location("validate_plan", SCRIPT)
-if SPEC is None or SPEC.loader is None:
-    raise RuntimeError(f"cannot load {SCRIPT}")
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
-validate = MODULE.validate
-main = MODULE.main
+SCRIPT_ROOT = Path(__file__).resolve().parents[1] / "scripts"
+sys.path.insert(0, str(SCRIPT_ROOT))
+from roughcut_tool import main
+from roughcut_tools.validators.decision_plan import validate_decision_plan as validate
 
 
 class PlanTests(unittest.TestCase):
@@ -245,8 +240,7 @@ class PlanTests(unittest.TestCase):
             path.write_text(_json.dumps(plan, ensure_ascii=False), encoding="utf-8")
             argv_backup = sys.argv
             try:
-                sys.argv = ["validate_plan.py", str(path)]
-                rc = main()
+                rc = main(["validate", "plan", str(path)])
             finally:
                 sys.argv = argv_backup
         self.assertEqual(rc, 0)

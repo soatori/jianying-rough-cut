@@ -2,7 +2,7 @@
 
 This schema describes editorial analysis only. It contains no application-specific execution command, timeline mutation field, or project-file handoff.
 
-Subtitle correction and timing alignment is a separate contract. After the content plan has been executed on the current saved timeline, create and validate [alignment-plan.md](alignment-plan.md) with `scripts/validate_alignment_plan.py`; do not add Jianying locators to this content schema.
+Subtitle correction and timing alignment is a separate contract. After the content plan has been executed on the current saved timeline, create and validate [alignment-plan.md](alignment-plan.md) with `python scripts/roughcut_tool.py validate alignment <plan.json>`; do not add Jianying locators to this content schema.
 
 ## Required top-level fields
 

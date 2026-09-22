@@ -3,11 +3,7 @@
 
 from __future__ import annotations
 
-import json
-import sys
-from pathlib import Path
 from typing import Any
-
 
 MODES = {"audio", "picture", "manual"}
 BASES = {
@@ -15,11 +11,20 @@ BASES = {
     "speaker_change", "manual_marker", "subtitle_boundary",
 }
 CONFIDENCE = {"high", "medium", "low"}
-PLAN_STATUS = {"draft", "stable", "approved"}
+PLAN_STATUS = {"pending", "draft", "stable", "approved"}
 REVIEW_STATUS = {"pending", "approved", "not_required"}
 WORDS_STATUS = {"valid", "invalid", "unavailable"}
 WORDS_ROLE = {"cross_check", "fallback"}
 REMAP_STATUSES = {"not_required", "pending", "verified", "blocked"}
+BOUNDARY_AUTHORITIES = {"waveform", "audio", "manual"}
+TEXT_AUTHORITIES = {
+    "final_visible_subtitle",
+    "approved_subtitle_alignment",
+    "edited_timeline_audio",
+    "current_visible_subtitle",
+    "generated_transcript",
+}
+SUBTITLE_ORIGINS = {"current_timeline", "generated_transcript"}
 
 # These keys belong to the Jianying adapter, never to a generic editorial plan.
 APPLICATION_KEYS = {
@@ -116,10 +121,13 @@ def validate(plan: Any) -> dict[str, Any]:
                 errors.append(f"source.{field} is required")
         if source.get("timebase") != "microseconds":
             errors.append("source.timebase must be microseconds")
-        if "text_authority" in source and source.get("text_authority") not in {
-            "final_visible_subtitle", "approved_subtitle_alignment", "edited_timeline_audio"
-        }:
+        if "text_authority" in source and source.get("text_authority") not in TEXT_AUTHORITIES:
             errors.append("source.text_authority is invalid")
+        subtitle_origin = source.get("subtitle_origin")
+        if subtitle_origin is not None and subtitle_origin not in SUBTITLE_ORIGINS:
+            errors.append("source.subtitle_origin is invalid")
+        if subtitle_origin == "generated_transcript" and source.get("text_authority") != "generated_transcript":
+            errors.append("generated_transcript subtitle_origin requires generated_transcript text_authority")
         duration_us = source.get("duration_us")
         if not is_int(duration_us) or duration_us <= 0:
             errors.append("source.duration_us must be a positive integer")
@@ -180,6 +188,13 @@ def validate(plan: Any) -> dict[str, Any]:
             errors.append("policy.mode must be hybrid")
         if policy.get("default_boundary_mode", "audio") != "audio":
             errors.append("policy.default_boundary_mode must be audio")
+        boundary_authority = policy.get("boundary_authority")
+        if boundary_authority is not None and boundary_authority not in BOUNDARY_AUTHORITIES:
+            errors.append("policy.boundary_authority must be waveform, audio, or manual")
+        if boundary_authority == "waveform":
+            source_evidence = source.get("evidence", []) if isinstance(source, dict) else []
+            if not any(isinstance(item, dict) and item.get("kind") == "waveform" for item in source_evidence):
+                errors.append("waveform boundary authority requires source.evidence.kind=waveform")
         tolerance = policy.get("tolerance_us", 40_000)
         if not is_int(tolerance) or not 0 < tolerance <= 500_000:
             errors.append("policy.tolerance_us must be between 1 and 500000")
@@ -214,6 +229,8 @@ def validate(plan: Any) -> dict[str, Any]:
         errors.append("subtitle_units must be a non-empty array")
         units = []
     unit_ids: set[str] = set()
+    previous_start: int | None = None
+    previous_end: int | None = None
     for index, unit in enumerate(units):
         path = f"subtitle_units[{index}]"
         if not isinstance(unit, dict):
@@ -238,6 +255,14 @@ def validate(plan: Any) -> dict[str, Any]:
             errors.append(f"{path}.end_us must be after start_us")
         if duration_us is not None and is_int(end) and end > duration_us:
             errors.append(f"{path}.end_us exceeds source.duration_us")
+        if is_int(start) and start >= 0:
+            if previous_start is not None and start < previous_start:
+                errors.append(f"{path}.start_us must be non-decreasing across subtitle units")
+            previous_start = start
+        if is_int(end) and end > 0:
+            if previous_end is not None and end < previous_end:
+                errors.append(f"{path}.end_us must be non-decreasing across subtitle units")
+            previous_end = end
         boundaries = unit.get("boundaries")
         if not isinstance(boundaries, dict):
             errors.append(f"{path}.boundaries must be an object")
@@ -295,18 +320,3 @@ def validate(plan: Any) -> dict[str, Any]:
     }
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: validate_alignment_plan.py <plan.json>", file=sys.stderr)
-        return 2
-    try:
-        data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8-sig"))
-        result = validate(data)
-    except Exception as exc:
-        result = {"ok": False, "errors": [f"validation failed safely: {type(exc).__name__}: {exc}"], "warnings": []}
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if result["ok"] else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

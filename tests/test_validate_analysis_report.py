@@ -3,8 +3,7 @@ import importlib.util
 import unittest
 from pathlib import Path
 
-
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "validate_analysis_report.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "roughcut_tools" / "validators" / "analysis_report_impl.py"
 SPEC = importlib.util.spec_from_file_location("validate_analysis_report", SCRIPT)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError(f"cannot load {SCRIPT}")
@@ -67,6 +66,13 @@ class AnalysisReportTests(unittest.TestCase):
         report["timeline_comparison"]["source_sequence"] = ["U1", "U2"]
         report["timeline_comparison"]["target_sequence"] = ["U2", "U1"]
         self.assertFalse(MODULE.validate(report)["ok"])
+
+    def test_nested_destructive_fields_are_rejected(self):
+        report = valid_report()
+        report["evidence"].append({"kind": "review", "status": "review", "nested": {"delete": True}})
+        result = MODULE.validate(report)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("destructive action field" in error for error in result["errors"]))
 
     def test_application_fields_are_rejected(self):
         report = valid_report()
