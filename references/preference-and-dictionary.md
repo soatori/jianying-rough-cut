@@ -33,6 +33,14 @@ Compare the approved proposal (kept in the task folder) against the final human-
 
 A zero-diff result is still recorded as a `fully_adopted` report entry. Do not silently discard the human's edits — the diff is the only learning signal.
 
+Always persist the approved decision/packaging plan JSON into the draft's working folder while executing, so this Pass 3 diff has a reproducible source. When no plan was persisted, fall back to the draft's own autosave history: decode the `.backup/*.save.bak` snapshots plus the root active-mirror timeline and reconstruct a coarse before→after (track/segment/text/color/animation counts). This reconstruction is file-level (`plan_consistency`) evidence only — it cannot prove perceptual or listening outcomes, so downgrade any conclusion it supports to `review`.
+
+## Where persistence lives
+
+- **Reusable skill files hold generic methods only.** Never write a single project's concrete palette, wording, per-word colors, exact coordinates, or client terms into the shipped skill; that is content, not procedure. A generic layout scheme (how emphasis rows surround/stack relative to the subtitle baseline) is method and may live in the skill; the actual values a project settles on are not.
+- **Durable per-project taste and lexicon go to the user-owned external stores** — the per-user dictionary, the preference file, and the project case reference — which the skills load at runtime. They are the only correct home for confirmed proper nouns, thresholds, and a project's measured layout/color/animation values.
+- **Do not force project knowledge into the volatile agent long-term memory**, which is size-capped and will silently reject or thrash writes near capacity. When a durable lesson is project-specific, write it to the case reference / preference file, not to agent memory.
+
 ## Three drawers
 
 - **Taste differences** → report a pending preference suggestion. Own the phrasing; only add or rewrite your own sections after approval.
