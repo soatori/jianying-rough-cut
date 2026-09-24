@@ -3,6 +3,13 @@
 Use the CLI for deterministic preparation. Keep semantic judgment, technical
 listening, and approval as explicit human gates.
 
+Stage map: the Material, Transcript, and Edited-time rows are **粗剪**
+preparation (structure and evidence); the Cleanup-candidates and both subtitle
+rows are **精剪** (the delivery-refinement loop and subtitle alignment). Here
+"script-first" means *CLI-script-first* deterministic prep, unrelated to whether
+the speaker had a written 文案 — the 文案 / 无文案 choice lives in the copy-first
+and discovery runbooks.
+
 When the request is subtitle-only, select the `subtitle_alignment` operating
 mode. Do not run the full content-edit route just to align or generate
 subtitles. The input must identify edited-timeline audio (or precomputed

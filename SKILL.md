@@ -1,31 +1,57 @@
 ---
 name: jianying-rough-cut
-description: "Use for 剪映口播、访谈、教程、讲座等 speech-led content analysis, rough-cut decisions, and waveform-first subtitle plans. Preserve manual subtitle text, order, and segmentation; never write Jianying projects or make destructive decisions from ASR alone."
+description: "Use for 剪映口播、访谈、教程、讲座等 speech-led editing. Runs a two-stage flow — 粗剪 (content structure: two entries, written-copy and no-copy/discovery) then 精剪 (the main delivery-refinement loop: fillers, pauses, repetition, tone, hard joins, waveform-first subtitle alignment). Produces auditable, application-independent plans; preserves manual subtitle text, order, and segmentation; never writes Jianying projects or makes destructive decisions from ASR alone."
 ---
 
-# Jianying-Intelligent-Rough-Cut
+# Jianying-Intelligent-Editing (剪映智能剪辑)
 
-This is the content-intelligence layer for 剪映 speech-led edits. It listens to and understands the source before deciding what the audience should hear, protects technical meaning and continuity, and produces an auditable content plan. Its subtitle workflow supports both current-subtitle alignment and no-subtitle generation, but it only consumes application-independent evidence: it never reads or writes a Jianying draft or calls `jianying-editor`.
+This is the content-intelligence and editorial-decision layer for 剪映 speech-led editing. It runs a two-stage flow: **粗剪** decides *what the audience should hear* (structure, keep/drop, order), and **精剪** refines *how it is delivered* (fillers, pauses, repetition, tone, hard joins) and aligns subtitles. Both stages protect technical meaning and continuity and emit an auditable plan. The subtitle workflow supports current-subtitle alignment and no-subtitle generation, but the skill only consumes application-independent evidence: it never reads or writes a Jianying draft or calls `jianying-editor`.
 
 ## Positioning
 
-- **Owns:** source completeness and orientation, the transcript correction gate (fix misheard text before deciding), semantic segmentation, speaker and Q&A structure, protected facts, Pass 1 content rough-cut decisions, Pass 2 speech refinement, subtitle proofreading/alignment after the edited timeline is saved, and the Pass 3 retrospective that turns human corrections into dictionary, preference, and case-law learning.
-- **Produces:** an application-independent content decision plan, a transcript correction table plus unresolved-term list, a repeated-attempt rollup, tiered verification labels, a separate subtitle-alignment plan when that stage is requested, and a Pass 3 learning record.
+- **Owns:** source completeness and orientation, the transcript correction gate (fix misheard text before deciding), semantic segmentation, speaker and Q&A structure, and protected facts; **粗剪** (content decisions — keep/drop/order at block level, via the copy-first or discovery entry); **精剪** (the main delivery-refinement loop — fillers, false starts, repeated openings, stutters, redundant restatements, excess pauses, hard joins — plus subtitle proofreading/alignment after the edited timeline is saved); and the Pass 3 retrospective that turns human corrections into dictionary, preference, and case-law learning.
+- **Produces:** an application-independent content decision plan, a copy-first material index (numbered source clips mapped to script segments, with the surviving take chosen) when the speaker worked from a written copy, a generated speaker-labelled transcript as the analysis substrate for interview / no-copy material, a transcript correction table plus unresolved-term list, a repeated-attempt rollup, tiered verification labels, a separate subtitle-alignment plan when that stage is requested, and a Pass 3 learning record.
 - **Handoff:** an external, explicitly approved handoff may let `jianying-editor` resolve approved ranges against the current saved draft; `jianying-packaging` starts only after content and subtitle alignment are stable or approved.
 - **Does not own:** direct Jianying project writes, flower text, upper-track styling, templates, transitions, overlays, sound effects, or non-speech montage editing. Non-goal: this layer borrows editorial *method* only and never re-implements a proprietary editing runtime (a persistent service, a workbench/Studio UI, a revision-compare-and-swap ledger, forced cloud-only ASR, or a word-id cut store). Project state, probing, and every write belong to `jianying-editor`; this skill only emits validated, application-independent plans.
 
 “Intelligent” means evidence-backed semantic judgment with reviewable uncertainty—not blind deletion based on transcript text, punctuation, or pause length.
 
-The surrounding workflow may be `jianying-rough-cut → (explicit handoff) jianying-editor → jianying-packaging`. The rough-cut skill itself does not probe a saved draft, resolve encrypted project state, or apply a plan. Use [references/workflow-state.md](references/workflow-state.md) for the shared handoff states.
+The surrounding workflow may be `jianying-rough-cut → (explicit handoff) jianying-editor → jianying-packaging`. This editing skill itself does not probe a saved draft, resolve encrypted project state, or apply a plan. Use [references/workflow-state.md](references/workflow-state.md) for the shared handoff states.
 
 Project-specific conventions must be supplied through an external project case reference. This reusable Skill does not bundle a user's copy, timing, track, or style decisions.
+
+## Flow control (流程控制)
+
+One `content_edit` run is a two-stage pipeline with human gates. A blocked condition stops forward motion; a semantic finding from the packaging stage loops back to 粗剪. Schema phase keys are unchanged: 粗剪 → `workflow.content_pass`, 精剪 → `workflow.refinement_pass`.
+
+```text
+[入口] 有文案(copy)?  ──是──▶ 粗剪 · Copy-first   (references/copy-first-rough-cut.md)
+                    └─否──▶ 粗剪 · Discovery    (references/discovery-rough-cut.md: 转写+多人标注 → 大纲 → 评估询问 → 计划)
+   │  产出 content decision plan；标记 workflow.content_pass = draft
+   ▼
+[闸门] content_pass 是否 stable/approved？  否 → 继续粗剪
+   │  阻塞（不得高置信破坏性决策）：缺音频/字幕状态未知/修字闸门未过/域或术语未定
+   ▼  是
+[精剪主循环 · 可循环]  Pass 2 清理（重复句/停顿/气口/语气词/听感不顺）→ 字幕对齐 → SRT；标记 workflow.refinement_pass
+   ▼
+[执行交接] 显式确认后由 jianying-editor 按批准区间落时间线/对齐
+   │  区间无法解析、切在半句、顺序或音画漂移 → 报告该片段，不静默挪边界/重定时
+   ▼
+[审查] 人工：content_pass → subtitle_alignment → visual_audio_review（references/workflow-state.md）
+   ▼
+[出口] 通过 → 询问是否进入 jianying-packaging（花字/强调/转场/音效）
+   ▲                                   │
+   └───────── needs_rough_cut_review ──┘  包装发现语义问题 → 回到粗剪，禁止当作显示层改动吞掉
+```
+
+Standing rules that drive the arrows: 粗剪 before 精剪 — never refine while `content_pass` is `draft`; every 精剪 candidate is re-auditioned in context and waveform is the boundary authority; this skill emits validated plans only, and every draft read/write is the `jianying-editor` handoff. `subtitle_alignment` mode enters at the 精剪 subtitle step; `final_draft_audit` is read-only and cuts nothing.
 
 ## Operating modes
 
 Use one explicit mode for each request:
 
-- `content_edit`: analyze source audio/video, decide content structure, and produce an auditable rough-cut or subtitle-alignment plan. This is the default mode.
-- `subtitle_alignment`: align an existing subtitle list or generate review-pending subtitles from a timed transcript against edited-timeline audio. This is a standalone mode: do not run content-cut decisions, probe a Jianying draft, or write a project.
+- `content_edit`: run the full two-stage edit — **粗剪** (content structure via the copy-first or discovery entry) then **精剪** (the delivery-refinement main loop) — and produce an auditable content decision plan and, on request, a subtitle-alignment plan. This is the default mode.
+- `subtitle_alignment`: the **精剪** subtitle step alone — align an existing subtitle list or generate review-pending subtitles from a timed transcript against edited-timeline audio. Do not run 粗剪 content-cut decisions, probe a Jianying draft, or write a project.
 - `final_draft_audit`: inspect an already saved final or near-final timeline without proposing edits. The current rendered/visible final subtitle is the report's wording authority; ASR, old subtitles, and internal fields are evidence for discrepancies only.
 
 In `subtitle_alignment`, establish application-independent audio and subtitle-state evidence, then use the subtitle route in [references/subtitle-proofreading-and-audio-alignment.md](references/subtitle-proofreading-and-audio-alignment.md). Do not force a full content-orientation or refinement pass unless the user also requested content editing.
@@ -62,7 +88,14 @@ Tag every reported conclusion with a verification tier (`plan_consistency` / `vi
 
 For `content_edit`, the following order is required. Do not propose definite deletion, shortening, deduplication, or reordering before the correction gate and the orientation and outline stages are complete. For `subtitle_alignment`, skip the content-cut stages and begin at the subtitle stage after the input-state audit.
 
-1. Establish the requested outcome, target audience, platform/pace, duration constraint, and preservation requirements when they affect decisions.
+**粗剪 has two entries that share one 精剪 tail.** Pick the entry by whether the speaker had a written copy (口播稿 / 文案):
+
+- **粗剪 · Copy-first** — the speaker recorded to a written script. The copy is the structural spine; the front end is a numbered material index, whole-clip take selection, and ordering the kept units by the copy while dropping re-takes, countdown lead-ins, and off-copy digressions. Follow [references/copy-first-rough-cut.md](references/copy-first-rough-cut.md).
+- **粗剪 · Discovery** — interview / 对谈 / talk, or otherwise no accurate copy. There is nothing to order against, so the front end transcribes and diarizes first, builds the outline from the transcript, agrees scope and order with the human, then plans the block-level rough cut (coarse pass first). Follow [references/discovery-rough-cut.md](references/discovery-rough-cut.md).
+
+Only each entry's **front end (粗剪)** differs. The **精剪** tail — the refinement main loop, subtitle/SRT, and the `jianying-editor` handoff — is shared (steps 11–13 below; steps 14–15 are the post-review retrospective and stage-diff, which edit nothing). Neither entry changes the plan schema and neither probes or writes a draft.
+
+1. Establish the requested outcome, target audience, platform/pace, duration constraint, and preservation requirements when they affect decisions. When there is no accurate copy, make this an explicit one-time scope-and-order consultation before the outline locks (see the discovery runbook): recommend what to keep or drop at block level and whether to preserve chronological order, then take direction — a single brief, never a per-cut confirmation.
 2. Read or listen through the complete available material, perform the material-completeness audit, and record evidence sources and limitations.
 3. Run the transcript correction gate in [references/transcript-correction-gate.md](references/transcript-correction-gate.md): correct misheard text against the general and per-user dictionaries (plus a one-time script alignment only when the dictionary cannot settle a term and the speaker's own script exists), and produce the applied-corrections table plus unresolved list before any cut decision. A misheard name is not a deletion reason; fix text first.
 4. Complete the content-orientation stage in [references/domain-and-outline.md](references/domain-and-outline.md): identify the theme, thesis, purpose, audience, professional domain, terminology, entities, protected facts, and information outline.
@@ -70,11 +103,11 @@ For `content_edit`, the following order is required. Do not propose definite del
 6. Reconstruct complete semantic units across transcript segments. ASR rows and subtitle cues are timing containers, not sentence or idea boundaries.
 7. Identify stable speakers and per-unit conversational functions such as host, questioner, respondent, expert, narrator, correction, or supplement. For multi-speaker/Q&A work, read [references/dialogue-and-qa.md](references/dialogue-and-qa.md).
 8. Build the original content map before proposing deletions. For detailed criteria, read [references/content-analysis.md](references/content-analysis.md).
-9. Produce the first-pass content rough cut. Preserve complete meaning and allow natural breaths, modest pauses, and harmless small repetitions.
+9. 【粗剪】Produce the first-pass content rough cut. Preserve complete meaning and allow natural breaths, modest pauses, and harmless small repetitions.
 10. Audit the proposed cut against the complete source for missing context, altered claims, incorrect question/answer pairing, out-of-order logic, technical-detail loss, and domain terminology loss.
-11. Mark the content pass as draft, stable, or approved. Only when it is stable or approved, produce a separate refinement pass for fillers, false starts, repeated openings, stutters, redundant restatements, excess pauses, tiny audio remnants, and hard joins. Run it as five single-criterion scans (one criterion per read) in [references/speech-cleanup.md](references/speech-cleanup.md), apply the case-law in [references/cut-case-law.md](references/cut-case-law.md), and honor the boundary rules in [references/audio-boundaries.md](references/audio-boundaries.md).
+11. 【精剪】Mark the content pass as draft, stable, or approved. Only when it is stable or approved, produce a separate refinement pass for fillers, false starts, repeated openings, stutters, redundant restatements, excess pauses, tiny audio remnants, and hard joins. Run it as five single-criterion scans (one criterion per read) in [references/speech-cleanup.md](references/speech-cleanup.md), apply the case-law in [references/cut-case-law.md](references/cut-case-law.md), and honor the boundary rules in [references/audio-boundaries.md](references/audio-boundaries.md). This refinement is iterative and may loop: re-run the scans and re-audition in context until the delivery reads naturally, revisiting any unit that still misfires.
 12. Output the independent content decision plan described in [references/decision-plan-schema.md](references/decision-plan-schema.md). Do not output an application-specific execution handoff.
-13. After the content pass has been executed, or directly for `subtitle_alignment`, run the subtitle proofreading and audio-alignment stage in [references/subtitle-proofreading-and-audio-alignment.md](references/subtitle-proofreading-and-audio-alignment.md). For an existing subtitle list, use `python scripts/roughcut_tool.py subtitle-align --audio <edited-audio> --subtitles <current-subtitles> --out <plan.json>`; for a timeline with no subtitles, use `python scripts/roughcut_tool.py subtitle-generate --audio <edited-audio> --transcript <timed-transcript> --out <plan.json> [--srt-out <preview.srt>]`. Both paths require edited-timeline audio or precomputed waveform evidence; unreadable subtitle state and missing audio block before waveform analysis. The generated path requires timed `segment`/`word` evidence and keeps `review_status=pending`. In both paths waveform evidence is the boundary authority; `build-alignment` remains a token-map arithmetic helper and cannot by itself prove alignment. Validate the separate [references/alignment-plan.md](references/alignment-plan.md) contract with `python scripts/roughcut_tool.py validate alignment <plan.json>`. Hand off only after human listening and approval; if that handoff would involve `jianying-editor`, ask for explicit confirmation first.
+13. 【精剪】After the content pass has been executed, or directly for `subtitle_alignment`, run the subtitle proofreading and audio-alignment stage in [references/subtitle-proofreading-and-audio-alignment.md](references/subtitle-proofreading-and-audio-alignment.md). For an existing subtitle list, use `python scripts/roughcut_tool.py subtitle-align --audio <edited-audio> --subtitles <current-subtitles> --out <plan.json>`; for a timeline with no subtitles, use `python scripts/roughcut_tool.py subtitle-generate --audio <edited-audio> --transcript <timed-transcript> --out <plan.json> [--srt-out <preview.srt>]`. Both paths require edited-timeline audio or precomputed waveform evidence; unreadable subtitle state and missing audio block before waveform analysis. The generated path requires timed `segment`/`word` evidence and keeps `review_status=pending`. In both paths waveform evidence is the boundary authority; `build-alignment` remains a token-map arithmetic helper and cannot by itself prove alignment. Validate the separate [references/alignment-plan.md](references/alignment-plan.md) contract with `python scripts/roughcut_tool.py validate alignment <plan.json>`. The review-pending SRT may be saved beside the media (for example the draft folder) as a sidecar; it is still a review artifact, never a write-back source, and saving a plain file there is not a draft write. Hand off only after human listening and approval; if that handoff would involve `jianying-editor`, ask for explicit confirmation first. When approved ranges are later resolved against the saved draft — importing clips and aligning cut segments — an unresolved range, a cut landing mid-word, or order/sync drift is reported for the affected segment with evidence, never silently nudged or re-timed inside this skill.
 14. After the human reviews the result, run the Pass 3 retrospective in [references/preference-and-dictionary.md](references/preference-and-dictionary.md): diff the approved proposal against the final plan, and archive taste differences to the preference file, corrected proper nouns to the dictionary, and rule gaps to the pending-cases drawer. This stage records learning only; it never mutates a draft.
 15. When comparing completed stages, run `python scripts/roughcut_tool.py stage-diff --source <source.json> --target <target.json>`. Record display-only text changes separately from semantic/subtitle changes, and annotate excluded compound intervals without opening them.
 
@@ -93,15 +126,15 @@ The orientation report must contain, at minimum:
 
 If the orientation is incomplete, the output may contain hypotheses and review candidates, but it must not contain high-confidence destructive decisions for affected material.
 
-## Two-pass boundary
+## 粗剪 / 精剪 两阶段 (two-pass boundary)
 
-### Pass 1: content rough cut
+### 粗剪 · Pass 1（content rough cut）
 
 Optimize correctness, structure, and completeness. Remove clear digressions, failed takes fully covered by a complete take, large redundant passages, and content outside the agreed scope. Keep uncertain material for review.
 
 This pass may retain natural breaths, short thinking pauses, contextual discourse markers, and small repetitions that do not impair understanding.
 
-### Pass 2: rough-cut refinement
+### 精剪 · Pass 2（refinement main loop）
 
 After Pass 1 is approved or stable, tighten delivery at phrase and audio-boundary level. Prefer small local cuts over deleting whole sentences. Preserve one natural connector when repeated openings are reduced. Compress pauses rather than forcing speech to zero gap.
 
@@ -111,7 +144,7 @@ The plan must record the phase status separately: `workflow.content_pass` is `dr
 
 ### Pass 3: retrospective (learning only)
 
-Passes 1 and 2 are the only cutting passes; Pass 3 does not edit content. After the human reviews an executed result, run the retrospective in [references/preference-and-dictionary.md](references/preference-and-dictionary.md): diff the approved proposal against the final plan and persist restored cuts, missed cuts, and the dictionary/preference/pending-case updates they imply. It is gated by `content_pass` being `stable` or `approved` and never mutates a draft or a shipped plan.
+Passes 1 (粗剪) and 2 (精剪) are the only cutting passes; Pass 3 does not edit content. After the human reviews an executed result, run the retrospective in [references/preference-and-dictionary.md](references/preference-and-dictionary.md): diff the approved proposal against the final plan and persist restored cuts, missed cuts, and the dictionary/preference/pending-case updates they imply. It is gated by `content_pass` being `stable` or `approved` and never mutates a draft or a shipped plan.
 
 ## Decision rules
 
