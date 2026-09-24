@@ -64,6 +64,18 @@ why:      one natural particle is kept; deleting it makes the delivery feel fake
           the user preference file.
 ```
 
+## R7 · Countdown / slate lead-in (scan 1, low risk)
+
+```text
+source:   【三二一 开始】今天我们讲怎么把口播剪顺
+delete:   the spoken countdown and cue word before content starts
+remaining:今天我们讲怎么把口播剪顺
+why:      a verbal countdown or clap slate at a take's head is a recording cue, not content;
+          trim to the first real word. But off-copy speech that actually explains, amends, or
+          supplements the segment is NOT this case — judge supplement vs. digression before any
+          delete (domain-and-outline.md gate); unsure means review, not removal.
+```
+
 ## Promotion
 
 A pattern the user repeatedly restores or adds (from the Pass 3 diff) is logged as a pending case in the preference file; on its third occurrence, propose promoting it into this file — and only edit this file after human approval. Correction-type precedents (a cut the human vetoed) are still scarce; record them here in the same four-line format as they arise.

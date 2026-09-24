@@ -67,6 +67,8 @@ The per-decision table lists individual cuts and cannot answer "how many times w
 
 Rules: list every idea recorded more than once; name the kept take by range, not by "the best one"; mark divergence between takes as high risk and `needs_listen`. If the takes each add independent information, they are not repetitions and do not appear here. This rollup is a required output alongside the Pass 1 and Pass 2 tables.
 
+When each attempt is a separate numbered source clip (现场一条一条重录), the same rollup spans clips, not only one timeline: list the candidate clips by 编号, name the kept one by 编号 and range, and when the takes are otherwise equivalent prefer the higher 编号 — a later re-take usually fixes the flub. The higher number is a tie-breaker between complete takes, never proof of correctness: if a later take diverges in content, is incomplete, or is less accurate, keep the complete accurate one and mark `needs_listen`. Never stitch fragments from different numbered clips into a synthetic line. See [copy-first-rough-cut.md](copy-first-rough-cut.md) step 1.
+
 ## Source audit
 
 Before approving Pass 1, compare the proposed structure to the full source and ask:
