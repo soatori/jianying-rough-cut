@@ -19,6 +19,10 @@ For each semantic unit record:
 
 After the source map is stable, group units for short-video emphasis without rewriting them. Use the shared roles `hook`, `background`, `question`, `reaction`, `answer`, `evidence`, `technical_detail`, `contrast`, `benefit`, `summary`, and `cta`.
 
+For highlight selection from user-supplied segments, honor any declared segment-as-unit rule; when one line per unit is requested, keep the complete unit on that line. Do not substitute isolated words or characters, or rewrite semantic content. This applies to explicit display segmentation, not to ASR cue boundaries, which remain timing containers.
+
+Select enough units to represent the essential short-video beats at the requested emphasis density. Avoid both a sparse set that omits key beats and exhaustive highlighting of every cue. Follow the requested group size and layout instead of assuming a fixed count.
+
 Each group must retain:
 
 - semantic-unit IDs and final subtitle references;

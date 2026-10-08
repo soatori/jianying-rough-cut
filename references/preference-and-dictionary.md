@@ -17,7 +17,7 @@ A dictionary is a plain table; only table rows are parsed, so prose or bullet li
 ```markdown
 | 正确写法 | 常见误识别 |
 | --- | --- |
-| Grok | grok / Clock / Glock / Gokul / 格罗克 |
+| Canonical term | confirmed spelling variant A / confirmed spelling variant B |
 ```
 
 - Pick the most frequent confirmed spelling as canonical; on ties use the official spelling.
