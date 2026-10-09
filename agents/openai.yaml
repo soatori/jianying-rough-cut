@@ -1,4 +1,4 @@
 interface:
-  display_name: "Jianying-Intelligent-Editing (剪映智能剪辑)"
-  short_description: "Evidence-backed 剪映 speech-led 粗剪+精剪 content plans and waveform-first subtitle alignment"
-  default_prompt: "Use $jianying-rough-cut to plan 剪映口播/访谈 editing — 粗剪 content structure (copy-first or discovery) then 精剪 delivery refinement — or prepare a pending waveform-first subtitle plan, without writing a Jianying draft."
+  display_name: "Jianying Speech-Led Editing"
+  short_description: "Evidence-backed speech editing and waveform-first subtitle plans"
+  default_prompt: "Use $jianying-rough-cut to plan Chinese speech editing from content structure through delivery refinement, or prepare a pending waveform-first subtitle-alignment plan without writing to a Jianying draft."
