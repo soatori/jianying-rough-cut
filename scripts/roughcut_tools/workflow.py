@@ -36,6 +36,8 @@ def _record(
     input_errors: list[str],
     warnings: list[str],
 ) -> None:
+    # This labels deterministic preparation, not the supplied evidence or a verdict.
+    report["provenance"] = "script_generated"
     stages[name] = report
     errors.extend(f"{name}: {item}" for item in report.get("errors", []))
     input_errors.extend(f"{name}: {item}" for item in report.get("input_errors", []))
@@ -56,13 +58,33 @@ def _workflow_payload(stages: dict[str, dict[str, Any]], artifacts: dict[str, An
     }
 
 
-def _workflow_summary(stages: dict[str, dict[str, Any]], artifacts: dict[str, Any], subtitle_mode: str | None, waveform_passes: int) -> dict[str, Any]:
+def _workflow_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    stages = payload["stages"]
+    provenance_counts = dict.fromkeys(
+        ("script_generated", "agent_interpreted", "human_verified", "unavailable"), 0
+    )
+    for stage in stages.values():
+        provenance_counts[stage.get("provenance", "unavailable")] += 1
+    gates = payload["review_gates"]
     return {
         "stage_count": len(stages),
-        "artifact_count": len(artifacts),
-        "waveform_passes": waveform_passes,
+        "artifact_count": len(payload["artifacts"]),
+        # Count the shared successful evidence stage, never its consumers.
+        "waveform_passes": int(stages.get("waveform_evidence", {}).get("ok") is True),
+        "provenance_counts": provenance_counts,
+        "agent_required_count": len(payload["agent_required"]),
+        "gate_counts": {
+            "human_review": sum(gate["kind"] == "human_review" for gate in gates),
+            "human_listening": sum(gate["kind"] == "human_listening" for gate in gates),
+            "pending": sum(gate["status"] == "pending" for gate in gates),
+            "cleared": sum(gate["status"] == "cleared" for gate in gates),
+        },
+        "blocked_stage_count": len(payload["blocked_work"]),
+        "unavailable_evidence_count": sum(
+            status == "unavailable" for status in payload["evidence_status"].values()
+        ),
         "editor_writes": 0,
-        "subtitle_mode": subtitle_mode or "blocked",
+        "subtitle_mode": payload["subtitle_mode"] or "blocked",
     }
 
 
@@ -174,7 +196,52 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
     warnings: list[str] = []
     transcript_corrections: list[dict[str, Any]] = []
 
+    subtitle_mode: str | None = None
     inputs = bundle.get("inputs")
+    raw_subtitles = bundle.get("subtitles") if "subtitles" in bundle else (
+        inputs.get("subtitle_timing") if isinstance(inputs, dict) else None
+    )
+    generation_requested = bundle.get("subtitle_mode") == "generate" or (
+        bundle.get("subtitle_mode", "auto") in {None, "auto"} and raw_subtitles == []
+    )
+    evidence_status = {
+        "audio": "unavailable",
+        "transcript": "not_assessed" if bundle.get("transcript") is not None or not (
+            generation_requested or bundle.get("edit_map") is not None
+        ) else "unavailable",
+        "subtitle_state": "unavailable",
+        "playback_map": "unavailable",
+    }
+
+    def finish() -> dict[str, Any]:
+        payload = _workflow_payload(stages, artifacts, subtitle_mode)
+        payload["evidence_status"] = evidence_status
+        payload["agent_required"] = [
+            "interpret unresolved transcript terms and protected facts",
+            "orient semantic units and audit content relationships",
+            "classify pause functions and assess semantic risk in context",
+        ]
+        payload["review_gates"] = [
+            {"id": name, "kind": kind, "status": "pending", "provenance": "unavailable"}
+            for name, kind in (
+                ("transcript_terms", "human_review"),
+                ("content_decisions", "human_review"),
+                ("waveform_edges", "human_listening"),
+                ("plan_approval", "human_review"),
+            )
+        ]
+        required = {"waveform_evidence", "candidate_scans", "subtitle_alignment"}
+        if generation_requested or subtitle_mode == "generate":
+            required.add("subtitle_generation")
+        payload["blocked_work"] = sorted(
+            name for name in required | set(stages)
+            if not stages.get(name, {}).get("ok")
+        )
+        return result(
+            "roughcut_workflow", data=payload, errors=errors, input_errors=input_errors,
+            warnings=warnings, summary=_workflow_summary(payload),
+        )
+
     if inputs is not None:
         try:
             audit = audit_material_completeness(_value(inputs))
@@ -191,6 +258,9 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
             transcript = None
             errors.append(f"transcript: {exc}")
 
+    if bundle.get("transcript") is not None:
+        evidence_status["transcript"] = "available" if transcript is not None else "unavailable"
+
     if transcript is not None and "dictionaries" in bundle:
         dictionaries, dictionary_errors = _dictionary_values(bundle.get("dictionaries"))
         if dictionary_errors:
@@ -205,6 +275,15 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
 
     subtitles, subtitles_supplied, subtitle_load_errors = _load_subtitle_input(bundle, inputs)
     input_errors.extend(subtitle_load_errors)
+    if subtitles_supplied and subtitles == [] and bundle.get("subtitle_mode", "auto") in {None, "auto"}:
+        generation_requested = True
+        if transcript is None:
+            evidence_status["transcript"] = "unavailable"
+    if subtitles_supplied and isinstance(subtitles, list) and not subtitle_load_errors:
+        evidence_status["subtitle_state"] = "available"
+    elif bundle.get("subtitle_mode") == "generate" and not subtitles_supplied:
+        # An explicit generate request declares an absent subtitle state.
+        evidence_status["subtitle_state"] = "available"
     subtitle_mode, mode_errors = _resolve_subtitle_mode(
         bundle.get("subtitle_mode"),
         subtitles,
@@ -214,14 +293,7 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
     if mode_errors:
         input_errors.extend(mode_errors)
         warnings.append("workflow stopped before waveform analysis because subtitle mode could not be resolved")
-        return result(
-            "roughcut_workflow",
-            data=_workflow_payload(stages, artifacts, subtitle_mode),
-            errors=errors,
-            input_errors=input_errors,
-            warnings=warnings,
-            summary=_workflow_summary(stages, artifacts, subtitle_mode, 0),
-        )
+        return finish()
 
     # A failed or unreadable subtitle-state input is not evidence that the
     # timeline is empty. Even an explicit generate request must not override
@@ -229,14 +301,7 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
     # explicitly after a read-only probe.
     if subtitle_load_errors:
         warnings.append("workflow stopped before generation and waveform analysis because subtitle state could not be read")
-        return result(
-            "roughcut_workflow",
-            data=_workflow_payload(stages, artifacts, subtitle_mode),
-            errors=errors,
-            input_errors=input_errors,
-            warnings=warnings,
-            summary=_workflow_summary(stages, artifacts, subtitle_mode, 0),
-        )
+        return finish()
 
     audio = bundle.get("audio")
     if audio is None and isinstance(inputs, dict):
@@ -247,16 +312,10 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
         audio = None
         input_errors.append(f"audio: {exc}")
     if audio is None:
+        evidence_status["audio"] = "unavailable"
         input_errors.append("subtitle alignment requires edited-timeline audio or precomputed waveform evidence")
         warnings.append("workflow stopped before generation and waveform analysis because edited audio evidence is missing")
-        return result(
-            "roughcut_workflow",
-            data=_workflow_payload(stages, artifacts, subtitle_mode),
-            errors=errors,
-            input_errors=input_errors,
-            warnings=warnings,
-            summary=_workflow_summary(stages, artifacts, subtitle_mode, 0),
-        )
+        return finish()
 
     pause_config = bundle.get("pause_config")
     if pause_config is not None and not isinstance(pause_config, dict):
@@ -268,6 +327,7 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
         generation = build_generated_subtitle_units(transcript, transcript_corrections)
         _record(stages, "subtitle_generation", generation, errors, input_errors, warnings)
         if generation.get("ok"):
+            evidence_status["transcript"] = "available"
             generated_data = generation.get("data") or {}
             subtitles = generated_data.get("subtitle_units")
             artifacts["generated_subtitles"] = subtitles
@@ -283,15 +343,9 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
                 "generated_from": "timed_transcript",
             }
         else:
+            evidence_status["transcript"] = "unavailable"
             warnings.append("workflow stopped before waveform analysis because timed transcript generation was blocked")
-            return result(
-                "roughcut_workflow",
-                data=_workflow_payload(stages, artifacts, subtitle_mode),
-                errors=errors,
-                input_errors=input_errors,
-                warnings=warnings,
-                summary=_workflow_summary(stages, artifacts, subtitle_mode, 0),
-            )
+            return finish()
 
     playback: Any = bundle.get("playback_map")
     if playback is not None:
@@ -315,6 +369,7 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
     if audio is not None:
         waveform = extract_waveform_evidence(audio, pause_config)
         _record(stages, "waveform_evidence", waveform, errors, input_errors, warnings)
+        evidence_status["audio"] = "available" if waveform.get("ok") else "unavailable"
         if waveform.get("ok"):
             waveform_data = waveform.get("data")
             artifacts["waveform_evidence"] = waveform_data
@@ -331,6 +386,7 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
             # only repeats the slow operation without adding evidence.
             scans = scan_all(playback_data, bundle.get("preferences"), waveform_data, pause_config)
             _record(stages, "candidate_scans", scans, errors, input_errors, warnings)
+            evidence_status["playback_map"] = "available" if scans.get("ok") else "unavailable"
             artifacts["candidate_scans"] = scans.get("data")
         elif playback_data is not None:
             warnings.append("candidate_scans: skipped because playback mapping is unresolved")
@@ -358,11 +414,4 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
         "semantic orientation, content decisions, waveform-edge listening, and approval remain human gates",
         "this workflow never invokes jianying-editor and never writes a Jianying draft",
     ])
-    return result(
-        "roughcut_workflow",
-        data=_workflow_payload(stages, artifacts, subtitle_mode),
-        errors=errors,
-        input_errors=input_errors,
-        warnings=warnings,
-        summary=_workflow_summary(stages, artifacts, subtitle_mode, 1 if waveform_data is not None else 0),
-    )
+    return finish()

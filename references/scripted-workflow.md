@@ -18,15 +18,15 @@ before FFmpeg. In `auto`, missing or unreadable subtitle state also blocks;
 explicit `generate` may omit `subtitles` or provide `subtitles: []`, but
 must block if a supplied subtitle-state object cannot be read.
 
-| Stage | Script action | Human gate |
-|---|---|---|
-| Material | `preflight` or the `workflow` bundle stage | confirm that missing/partial evidence is acceptable |
-| Transcript | `correct-transcript` with confirmed dictionaries | listen to unresolved names, numbers, models, and conditions |
-| Edited time | `playback-map` from the approved edit map | confirm order/remap is verified |
-| Cleanup candidates | `scan --kind all` or the `workflow` bundle stage | listen in context; candidates never mean delete |
-| Existing subtitles | `subtitle-align` or `workflow --subtitle-mode existing` | preserve current text/order/segmentation; listen to every flagged edge |
-| No subtitles | `subtitle-generate` or `workflow --subtitle-mode generate` | listen to generated text and every flagged edge; approve the plan and SRT |
-| Retrospective | `retrospective` | record only corrections the user actually accepted |
+| Stage | Script action | Agent-required follow-up | Human gate |
+|---|---|---|---|
+| Material | `preflight` or the `workflow` bundle stage | interpret completeness limits without inventing missing evidence | confirm that missing/partial evidence is acceptable |
+| Transcript | `correct-transcript` with confirmed dictionaries | review unresolved terminology and protected facts | listen to unresolved names, numbers, models, and conditions |
+| Edited time | `playback-map` from the approved edit map | inspect semantic membership/order and mapping limits | confirm order/remap is verified |
+| Cleanup candidates | `scan --kind all` or the `workflow` bundle stage | classify pause functions and semantic risk in context | listen in context; candidates never mean delete |
+| Existing subtitles | `subtitle-align` or `workflow --subtitle-mode existing` | cross-check wording and boundary evidence | preserve current text/order/segmentation; listen to every flagged edge |
+| No subtitles | `subtitle-generate` or `workflow --subtitle-mode generate` | proofread generated units and unresolved terms | listen to generated text and every flagged edge; approve the plan and SRT |
+| Retrospective | `retrospective` | separate reusable lessons from case-specific records | record only corrections the user actually accepted |
 
 ## Two subtitle modes
 
@@ -116,6 +116,46 @@ because the subtitle state is unknown.
 The workflow reuses the single waveform result for pause scanning and subtitle
 alignment, so it does not invoke ffmpeg again for the candidate scan. It never
 invokes `jianying-editor`, reads a Jianying project, or writes a Jianying draft.
+
+## Coverage summary and pending work
+
+The `workflow` summary is coverage metadata, not completed semantic work or
+completed human review. Its counts describe this preparation run only:
+
+| Field | Counting unit and limit |
+|---|---|
+| `stage_count` | Recorded deterministic stage reports, including failed attempts; skipped stages are excluded. |
+| `artifact_count` | Artifact entries emitted by stages; inspect stage status before consuming them. |
+| `waveform_passes` | Successful shared waveform-evidence stage: zero or one. Precomputed evidence counts once; scans and alignment reuse it. This is not the number of FFmpeg calls, normalizations, or failed attempts. |
+| `provenance_counts` | Top-level stage reports by `script_generated`, `agent_interpreted`, `human_verified`, or `unavailable`. Each stage explicitly labels its deterministic preparation as `script_generated`, including failed reports; this does not relabel its input evidence or mean its contents were reviewed. Agent/human counts remain zero. |
+| `agent_required_count` | Three declared follow-up categories in `data.agent_required`: transcript interpretation, semantic orientation/audit, and contextual pause/risk assessment. Categories are requirements, not completed actions or per-candidate counts. |
+| `gate_counts` | Four declared gates in `data.review_gates`: three `human_review` and one `human_listening`. All four remain `pending`; `cleared` is zero. Counts are gate categories, not reviewed rows or listened-to edges. |
+| `blocked_stage_count` | Unique names in `data.blocked_work`: failed recorded stages plus unexecuted waveform, candidate-scan, and alignment work; generation is included when requested or selected. A skipped downstream stage is counted once even with several missing prerequisites. |
+| `unavailable_evidence_count` | Unavailable entries in `data.evidence_status`, counted once per evidence category rather than per error or affected stage. |
+
+`data.evidence_status` distinguishes audio, transcript, subtitle state, and
+playback mapping. `available` means readable/accepted at the relevant
+preparation step, not semantically correct or human-verified. Required evidence
+that is missing, unreadable, unresolved, or cannot be evaluated after an upstream
+block is `unavailable`. An omitted transcript is `not_assessed` when generation
+and source-to-edited mapping do not require it. A supplied playback map still
+needs usable canonical units; unresolved mappings never run candidate scans.
+An explicit empty subtitle list is evidence of absence, not missing evidence.
+
+Missing audio or unknown subtitle state stops alignment preparation. Missing
+transcript blocks generation and source-to-edited mapping; an already supplied
+usable playback map does not require another transcript. Missing or unresolved
+mapping blocks candidate scans while existing-subtitle waveform alignment may
+continue. Thus `ok=true` can coexist with blocked optional content-scan work;
+inspect both stage records and `blocked_work` before choosing a handoff. Early
+returns retain the same coverage fields, and no evidence count clears a gate.
+
+Agent interpretation must supply contextual reasoning and provenance separately.
+Neither ASR, a long pause, a waveform edge, nor a successful CLI run authorizes
+deleting, splitting, joining, or removing a pause. Semantic membership/order or
+protected-fact changes return to rough-cut review. A recorded human verdict is
+required to clear `human_listening`; agent playback cannot clear it. This
+workflow does not ingest verdicts or advance review states automatically.
 
 If a saved draft must be probed, resolved, cloned, or written back, stop at
 this skill boundary and ask for explicit confirmation before involving

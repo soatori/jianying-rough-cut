@@ -25,3 +25,34 @@ content_pass stable/approved
 ```
 
 If packaging discovers a semantic problem, set the packaging result to `needs_rough_cut_review` and return to the content owner. Do not silently consume the issue as a display-only change.
+
+## Preparation coverage does not advance review state
+
+The `run_fixed_workflow` / CLI `workflow` summary is coverage metadata, not a
+claim of completed human review. `stage_count` and `provenance_counts` count
+recorded deterministic stage reports, including failures. `waveform_passes`
+counts the shared successful evidence stage once even when scans and subtitle
+alignment reuse it; it is not a listening verdict or an FFmpeg-attempt count.
+
+`agent_required_count` lists pending interpretation categories. `gate_counts`
+counts declared human gate categories: three review gates and one listening
+gate, all pending. A script-generated artifact never becomes `agent_interpreted`
+or `human_verified` merely because the workflow succeeded. Record contextual
+agent reasoning and human verdicts explicitly in the relevant report/plan;
+agent playback or waveform analysis cannot satisfy `human_listening`.
+
+Inspect `data.evidence_status` and `data.blocked_work` before handoff.
+`unavailable_evidence_count` counts unavailable evidence categories;
+`blocked_stage_count` counts distinct failed or skipped dependent stages, not
+errors. Missing audio or unknown subtitle state blocks alignment; missing timed
+transcript blocks generation and source-to-edited mapping; unresolved mapping
+blocks candidate scans. Existing subtitles may still be aligned against edited
+audio without a content mapping or transcript. This permitted partial path does
+not establish that blocked content work passed. Out-of-scope transcript evidence
+is `not_assessed`; missing required evidence remains `unavailable`.
+
+Preparation does not set `content_pass` or `subtitle_alignment` to `stable` or
+`approved`, clear `human_review`, or authorize a project write. Semantic
+membership/order or protected-fact changes reopen rough-cut review and
+`content_pass: draft`. See [scripted-workflow.md](scripted-workflow.md) for exact
+counting units, pending categories, and partial-path behavior.

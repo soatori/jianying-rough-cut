@@ -406,6 +406,99 @@ class RoughcutToolTests(unittest.TestCase):
         )
         self.assertEqual(report["data"]["stages"]["candidate_scans"]["data"]["pause_scan_status"], "executed")
 
+    def test_workflow_summary_counts_stage_provenance_and_pending_gates(self):
+        report = run_fixed_workflow({
+            "subtitles": [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}],
+            "audio": {"duration_us": 1000, "pauses": []},
+        })
+        summary = report["summary"]
+        self.assertEqual(summary.get("provenance_counts"), {
+            "script_generated": 2, "agent_interpreted": 0,
+            "human_verified": 0, "unavailable": 0,
+        })
+        self.assertEqual(summary["stage_count"], 2)
+        self.assertEqual(summary.get("agent_required_count"), 3)
+        self.assertEqual(summary.get("gate_counts"), {
+            "human_review": 3, "human_listening": 1, "pending": 4, "cleared": 0,
+        })
+        self.assertEqual(summary.get("blocked_stage_count"), 1)
+        self.assertEqual(report["data"]["blocked_work"], ["candidate_scans"])
+        self.assertTrue(all(stage["provenance"] == "script_generated"
+                            for stage in report["data"]["stages"].values()))
+        self.assertTrue(all(gate["status"] == "pending"
+                            for gate in report["data"]["review_gates"]))
+
+    def test_workflow_summary_exposes_missing_evidence_without_running_affected_work(self):
+        subtitle = [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}]
+        audio = {"duration_us": 1000, "pauses": []}
+        cases = [
+            ({"subtitles": subtitle}, "audio", "subtitle_alignment"),
+            ({"subtitle_mode": "generate", "subtitles": [], "audio": audio},
+             "transcript", "subtitle_generation"),
+            ({"audio": audio}, "subtitle_state", "subtitle_alignment"),
+            ({"subtitles": subtitle, "audio": audio}, "playback_map", "candidate_scans"),
+            ({"subtitles": subtitle, "audio": audio,
+              "playback_map": {"mapping_status": "unresolved", "unmapped_token_ids": ["token"]}},
+             "playback_map", "candidate_scans"),
+        ]
+        for bundle, missing, blocked in cases:
+            with self.subTest(missing=missing, bundle=bundle):
+                report = run_fixed_workflow(bundle)
+                self.assertEqual(report["data"].get("evidence_status", {}).get(missing), "unavailable")
+                self.assertIn(blocked, report["data"].get("blocked_work", []))
+                self.assertNotIn(blocked, report["data"]["stages"])
+                self.assertGreater(report["summary"].get("unavailable_evidence_count", 0), 0)
+                self.assertGreater(report["summary"].get("blocked_stage_count", 0), 0)
+                self.assertEqual(report["summary"].get("gate_counts", {}).get("cleared"), 0)
+
+    def test_workflow_summary_counts_reused_waveform_only_once(self):
+        report = run_fixed_workflow({
+            "subtitles": [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}],
+            "audio": {"duration_us": 1000, "pauses": []},
+            "playback_map": {"mapping_status": "verified", "units": [
+                {"id": "unit", "text": "text", "start_us": 100, "end_us": 200},
+            ]},
+        })
+        self.assertTrue(report["ok"], report)
+        self.assertEqual(report["summary"]["waveform_passes"], 1)
+        self.assertEqual(report["summary"].get("provenance_counts", {}).get("script_generated"), 3)
+        self.assertEqual(report["summary"].get("blocked_stage_count"), 0)
+        self.assertIn("candidate_scans", report["data"]["stages"])
+        self.assertIn("subtitle_alignment", report["data"]["stages"])
+
+    def test_workflow_summary_early_block_has_no_completed_provenance(self):
+        report = run_fixed_workflow({"audio": {"duration_us": 1000, "pauses": []}})
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["summary"]["stage_count"], 0)
+        self.assertEqual(report["summary"]["waveform_passes"], 0)
+        self.assertEqual(sum(report["summary"]["provenance_counts"].values()), 0)
+        self.assertEqual(report["summary"]["blocked_stage_count"], 3)
+        self.assertEqual(report["summary"]["unavailable_evidence_count"], 3)
+        self.assertEqual(report["data"]["evidence_status"]["transcript"], "not_assessed")
+
+    def test_workflow_summary_failed_waveform_is_not_a_successful_pass(self):
+        report = run_fixed_workflow({
+            "subtitles": [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}],
+            "audio": {"pauses": []},
+        })
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["summary"]["stage_count"], 1)
+        self.assertEqual(report["summary"]["waveform_passes"], 0)
+        self.assertEqual(report["summary"]["provenance_counts"]["script_generated"], 1)
+        self.assertEqual(report["summary"]["blocked_stage_count"], 3)
+        self.assertEqual(report["data"]["evidence_status"]["audio"], "unavailable")
+        self.assertNotIn("subtitle_alignment", report["data"]["stages"])
+
+    def test_workflow_summary_uses_effective_subtitle_input_for_generation_coverage(self):
+        report = run_fixed_workflow({
+            "subtitles": [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}],
+            "inputs": {"subtitle_timing": []},
+            "audio": {"duration_us": 1000, "pauses": []},
+        })
+        self.assertEqual(report["data"]["subtitle_mode"], "existing")
+        self.assertNotIn("subtitle_generation", report["data"]["blocked_work"])
+        self.assertEqual(report["data"]["evidence_status"]["transcript"], "not_assessed")
+
     def test_fixed_workflow_media_path_runs_one_pause_detection(self):
         with tempfile.NamedTemporaryFile(suffix=".wav") as media:
             bundle = {
