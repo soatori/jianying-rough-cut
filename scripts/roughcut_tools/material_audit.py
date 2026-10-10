@@ -19,7 +19,7 @@ def _probe_media_uncached(path: Path) -> dict[str, Any]:
     if not ffprobe:
         return {"path": str(path), "status": "unknown", "reason": "ffprobe unavailable"}
     completed = subprocess.run(
-        [ffprobe, "-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height,r_frame_rate", "-of", "json", str(path)],
+        [ffprobe, "-v", "error", "-show_entries", "format=duration:stream=codec_name,codec_type,sample_rate,channels,width,height,r_frame_rate", "-of", "json", str(path)],
         capture_output=True,
         text=True,
         encoding="utf-8",

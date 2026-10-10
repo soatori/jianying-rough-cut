@@ -12,9 +12,11 @@ and discovery runbooks.
 
 When the request is subtitle-only, select the `subtitle_alignment` operating
 mode. Do not run the full content-edit route just to align or generate
-subtitles. The input must identify edited-timeline audio (or precomputed
-waveform evidence); missing or unreadable audio blocks before generation and
-before FFmpeg. In `auto`, missing or unreadable subtitle state also blocks;
+subtitles. The input must identify audio from the final edited playback order
+(or precomputed waveform evidence), including its duration and preferably a
+content hash. Missing, stale, source-only, or unreadable audio blocks before
+generation and before FFmpeg; request a fresh application-independent mixdown
+instead of inferring project clip selection inside this skill. In `auto`, missing or unreadable subtitle state also blocks;
 explicit `generate` may omit `subtitles` or provide `subtitles: []`, but
 must block if a supplied subtitle-state object cannot be read.
 
@@ -63,7 +65,11 @@ candidate. Only an explicit config with
 larger offsets always retain the saved boundary and carry a listening flag.
 
 The current subtitle text and segmentation are input evidence, not a rebuild
-source. The command does not restore an older script order, overwrite wording,
+source. Use `validate alignment <plan> --audio <current-audio>` after any audio
+replacement; mismatched hash, duration, sample rate, channels, or codec blocks
+the plan. Identical adjacent subtitle text produces a warning unless the unit
+carries intentional repeat evidence.
+ The command does not restore an older script order, overwrite wording,
 or emit Jianying IDs or write instructions.
 
 For a timeline with no subtitles, generate a plan and an UTF-8 SRT review

@@ -19,6 +19,8 @@ change text but not the timed tokens or semantic-unit times. An SRT exported
 from the final plan is a UTF-8 review artifact and is not an application write
 source.
 
+When edited-audio evidence is available, record the exact artifact identity in `source.evidence` using `content_hash`, `duration_us`, `sample_rate`, `channels`, and `codec` rather than relying on a filename alone. Any playback-order, speed, volume, duration, or stream-format change invalidates the prior plan and requires regeneration. A unit may carry `repeat_intent: {"intentional": true, "evidence": "..."}` to exempt an otherwise identical adjacent text warning.
+
 For a read-only final-draft audit, add `mode: "final_draft_audit"` and set `source.text_authority` to `final_visible_subtitle`. ASR and older subtitle text remain evidence only. Add `source.subtitle_reference` with an ID, hash, and approved/stable status. If source and target order differs, add `comparison` with order hashes, semantic-unit sequences, a mapping list, and `remap_status`; approved output requires `not_required` or `verified`.
 
 Minimal shape:
@@ -62,6 +64,14 @@ playback-map -> scan -> build-alignment -> validate alignment
 
 `build-alignment` requires verified token mapping and canonical `units`; it calculates every new `start_us/end_us` from edited token times. Any old subtitle `start_us/end_us` is retained only under evidence such as `previous_range`, never copied to the new cue. Each unit has a stable `id`, `semantic_unit_id`, `review_status: "pending"`, and token-mapping evidence; boundaries use validator-supported `basis: "word_boundary"` and `review: "pending"`. Missing tokens, duplicate semantic IDs, non-contiguous mapped intervals, unresolved remaps, or missing duration/evidence block the generated report, which is self-checked by the alignment validator.
 
+To recheck a saved plan against the current edited audio, use:
+
+```powershell
+python scripts/roughcut_tool.py validate alignment <plan.json> --audio <current-audio>
+```
+
+A mismatch in any identity field blocks validation.
+
 The no-subtitle route is separate and does not require Jianying token IDs:
 
 ```text
@@ -75,3 +85,10 @@ evidence supplies boundary candidates and human review remains pending.
 Subtitle units must remain in playback order with non-decreasing `start_us` and
 `end_us`. The plan validator and SRT renderer reject a later unit whose end
 time moves backward, even when each individual range is valid.
+
+Subtitle units are semantic screens, not clones of picture segments. A unit may
+cross material cuts. In a material-boundary review, check only each unit's
+outer start/end against the allowed boundary set and report internal crossings
+separately. Do not create an identical adjacent unit solely because the picture
+cut; flag duplicate text for review unless repeated speech or reading cadence
+makes the repetition intentional.

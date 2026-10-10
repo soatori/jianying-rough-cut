@@ -165,6 +165,78 @@ def _detect_pauses(path: Path, config: dict[str, Any]) -> tuple[list[dict[str, i
     return pauses, "; ".join(errors) if errors else None
 
 
+
+def _file_sha256(path: Path) -> str | None:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return "sha256:" + digest.hexdigest()
+
+
+AUDIO_IDENTITY_REQUIRED_FIELDS = {
+    "content_hash", "duration_us", "sample_rate", "channels", "codec",
+}
+
+
+def _identity_complete(identity: dict[str, Any]) -> bool:
+    if not AUDIO_IDENTITY_REQUIRED_FIELDS.issubset(identity):
+        return False
+    if not isinstance(identity.get("content_hash"), str) or not identity["content_hash"]:
+        return False
+    for field in ("duration_us", "sample_rate", "channels"):
+        value = identity.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            return False
+    return isinstance(identity.get("codec"), str) and bool(identity["codec"])
+
+
+def _audio_identity(
+    path: Path | None,
+    probed: dict[str, Any] | None = None,
+    duration_us: int | None = None,
+    supplied: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    identity: dict[str, Any] = {}
+    explicit_identity = isinstance(supplied, dict) and bool(supplied)
+    if explicit_identity:
+        identity.update(supplied)
+    if path is not None and path.is_file():
+        content_hash = _file_sha256(path)
+        if content_hash is not None:
+            identity.setdefault("content_hash", content_hash)
+    if duration_us is None and isinstance(probed, dict):
+        raw_duration = probed.get("duration_us")
+        if isinstance(raw_duration, int) and not isinstance(raw_duration, bool) and raw_duration > 0:
+            duration_us = raw_duration
+    if duration_us is not None:
+        identity["duration_us"] = int(duration_us)
+    metadata = (probed or {}).get("metadata")
+    if isinstance(metadata, dict):
+        for stream in metadata.get("streams") or []:
+            if not isinstance(stream, dict) or stream.get("codec_type") != "audio":
+                continue
+            codec = stream.get("codec_name")
+            if isinstance(codec, str) and codec:
+                identity.setdefault("codec", codec)
+            try:
+                sample_rate = int(stream.get("sample_rate"))
+            except (TypeError, ValueError):
+                sample_rate = 0
+            if sample_rate > 0:
+                identity.setdefault("sample_rate", sample_rate)
+            channels = stream.get("channels")
+            if isinstance(channels, int) and not isinstance(channels, bool) and channels > 0:
+                identity.setdefault("channels", channels)
+            break
+    if not explicit_identity and not _identity_complete(identity):
+        return {}
+    return identity
+
+
 def extract_waveform_evidence(audio: Any, config: Any = None) -> dict[str, Any]:
     """Run one waveform pass, or normalize already computed evidence."""
 
@@ -196,6 +268,7 @@ def extract_waveform_evidence(audio: Any, config: Any = None) -> dict[str, Any]:
     else:
         return result("waveform_evidence", input_errors=["audio must be a media path or waveform evidence object"])
 
+    probed: dict[str, Any] | None = None
     precomputed = supplied.get("pauses") if supplied is not None else None
     if precomputed is not None:
         pauses, pause_errors = _normalize_pauses(precomputed, settings["pause_min_us"])
@@ -211,11 +284,18 @@ def extract_waveform_evidence(audio: Any, config: Any = None) -> dict[str, Any]:
             metadata = metadata or probed.get("metadata")
         if duration is None:
             return result("waveform_evidence", errors=["waveform evidence duration_us is required"])
+        identity = _audio_identity(
+            path,
+            probed if duration is not None and path is not None else None,
+            duration,
+            supplied.get("identity") if supplied is not None else None,
+        )
         data = {
             "status": "available",
             "path": str(path) if path is not None else supplied.get("path"),
             "duration_us": duration,
             "metadata": metadata,
+            "identity": identity,
             "pauses": pauses,
             "config": settings,
             "method": "precomputed_waveform",
@@ -233,11 +313,13 @@ def extract_waveform_evidence(audio: Any, config: Any = None) -> dict[str, Any]:
     pauses, source_error = _detect_pauses(path, settings)
     if source_error:
         return result("waveform_evidence", errors=[source_error], data={"probe": probed})
+    identity = _audio_identity(path, probed, probed["duration_us"])
     data = {
         "status": "available",
         "path": str(path),
         "duration_us": probed["duration_us"],
         "metadata": probed.get("metadata"),
+        "identity": identity,
         "pauses": pauses,
         "config": settings,
         "method": "ffmpeg_silencedetect",
@@ -444,13 +526,20 @@ def build_waveform_alignment_plan(
         for item in subtitles
     ]
     source_hash = _hash({"subtitle_units": subtitle_fingerprint, "audio_duration_us": duration_us})
+    edited_audio_evidence = {
+        "kind": "edited_audio",
+        "status": "available",
+        "method": waveform["method"],
+    }
+    if isinstance(waveform.get("identity"), dict) and waveform["identity"]:
+        edited_audio_evidence["identity"] = dict(waveform["identity"])
     source = {
         "content_plan_id": "derived-waveform-alignment:" + source_hash.split(":", 1)[-1][:16],
         "content_plan_hash": source_hash,
         "timebase": "microseconds",
         "duration_us": duration_us,
         "evidence": [
-            {"kind": "edited_audio", "status": "available", "method": waveform["method"]},
+            edited_audio_evidence,
             {"kind": "waveform", "status": "available", "method": waveform["method"], "pause_count": len(waveform["pauses"])},
         ],
         "text_authority": text_authority,

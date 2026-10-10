@@ -66,12 +66,50 @@ class AlignmentPlanTests(unittest.TestCase):
         result = MODULE.validate(valid_plan())
         self.assertTrue(result["ok"], result)
 
+    def test_adjacent_duplicate_text_emits_warning(self):
+        plan = valid_plan()
+        second = copy.deepcopy(plan["subtitle_units"][0])
+        second.update({
+            "id": "S2",
+            "semantic_unit_id": "U2",
+            "start_us": 2_000_000,
+            "end_us": 4_000_000,
+        })
+        plan["subtitle_units"].append(second)
+        result = MODULE.validate(plan)
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(
+            any("identical text" in warning for warning in result.get("warnings", [])),
+            result,
+        )
+
     def test_picture_boundary_requires_picture_evidence(self):
         plan = valid_plan()
         plan["subtitle_units"][0]["boundaries"]["end"].update({
             "basis": "waveform",
         })
         self.assertFalse(MODULE.validate(plan)["ok"])
+
+    def test_intentional_duplicate_repeat_intent_suppresses_warning(self):
+        plan = valid_plan()
+        second = copy.deepcopy(plan["subtitle_units"][0])
+        second.update({
+            "id": "S2",
+            "semantic_unit_id": "U2",
+            "start_us": 2_000_000,
+            "end_us": 4_000_000,
+            "repeat_intent": {
+                "intentional": True,
+                "evidence": "human_listening",
+            },
+        })
+        plan["subtitle_units"].append(second)
+        result = MODULE.validate(plan)
+        self.assertTrue(result["ok"], result)
+        self.assertFalse(
+            any("identical text" in warning for warning in result.get("warnings", [])),
+            result,
+        )
 
     def test_manual_boundary_requires_review(self):
         plan = valid_plan()
@@ -126,10 +164,44 @@ class AlignmentPlanTests(unittest.TestCase):
             result,
         )
 
+    def test_audio_identity_requires_complete_stream_fields(self):
+        plan = valid_plan()
+        for item in plan["source"]["evidence"]:
+            if item.get("kind") == "edited_audio":
+                item["identity"] = {
+                    "content_hash": "sha256:audio",
+                    "duration_us": 10_000_000,
+                    "sample_rate": 16_000,
+                }
+        result = MODULE.validate(plan)
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(
+            any("identity" in error for error in result["errors"]),
+            result,
+        )
+
     def test_end_us_beyond_duration_rejected(self):
         plan = valid_plan()
         plan["subtitle_units"][0]["end_us"] = 50_000_000  # duration_us is 10_000_000
         self.assertFalse(MODULE.validate(plan)["ok"])
+
+    def test_audio_identity_duration_must_match_plan_duration(self):
+        plan = valid_plan()
+        for item in plan["source"]["evidence"]:
+            if item.get("kind") == "edited_audio":
+                item["identity"] = {
+                    "content_hash": "sha256:audio",
+                    "duration_us": 9_000_000,
+                    "sample_rate": 16_000,
+                    "channels": 1,
+                    "codec": "pcm_s16le",
+                }
+        result = MODULE.validate(plan)
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(
+            any("identity.duration_us" in error for error in result["errors"]),
+            result,
+        )
 
     def test_subtitle_unit_end_times_must_be_non_decreasing(self):
         plan = valid_plan()

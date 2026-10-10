@@ -46,8 +46,10 @@ Classify supplied stages neutrally as `source`, `rough cut`, `intermediate edit 
 
 - Treat subtitle and ASR rows as timing containers, not sentence or idea boundaries. Reconstruct complete semantic units before proposing edits.
 - Fix confirmed misheard text before judging whether to cut it. A misspelled name is not a deletion reason.
-- In existing-subtitle mode, current visible subtitle text, order, and segmentation are authoritative; ASR is cross-check evidence. In generation mode, require timed transcript evidence. Correct text without changing token or semantic-unit timestamps.
+- In existing-subtitle mode, current visible subtitle text, order, and segmentation are authoritative; ASR is cross-check evidence. A later human correction supersedes every earlier generated plan or exported SRT, so re-read the current subtitle state before another pass. In generation mode, require timed transcript evidence. Correct text without changing token or semantic-unit timestamps.
 - Use edited audio and waveform evidence to establish boundaries. Waveform thresholds and ASR word timestamps can locate candidates but cannot authorize deletion or splitting by themselves.
+- A subtitle screen may cross picture or material cuts. Keep one screen per semantic unit; align its outer start/end to a material boundary only when punctuation, word segmentation, and audio agree. Never clone a screen once per clip.
+- Revalidate edited-audio identity (hash, duration, sample rate, channels, codec) after any audio replacement; warn on identical adjacent text unless intentional repeat evidence is recorded.
 - Preserve names, numbers, units, conditions, negations, comparisons, causes, qualifications, relationships, and technical claims. Uncertain or domain-sensitive material stays reviewable.
 - Separate the content pass from delivery refinement. Prefer small, local refinement cuts, and never synthesize a statement by stitching unfinished attempts.
 - Record a boundary basis, evidence, confidence, and expected join for every destructive decision. When evidence is incomplete or approximate, lower confidence and flag review.

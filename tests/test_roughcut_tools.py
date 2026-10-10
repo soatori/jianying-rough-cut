@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
+import shutil
 import sys
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 from unittest.mock import patch
 
@@ -331,6 +334,73 @@ class RoughcutToolTests(unittest.TestCase):
         )
         self.assertFalse(report["ok"])
         self.assertTrue(any("pause_min_us" in error for error in report["errors"]))
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe required")
+    def test_audio_path_identity_includes_hash_and_stream_format(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "identity.wav"
+            with wave.open(str(path), "wb") as stream:
+                stream.setnchannels(1)
+                stream.setsampwidth(2)
+                stream.setframerate(8000)
+                stream.writeframes(b"\x00\x00" * 1600)
+            expected_hash = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+            report = extract_waveform_evidence(str(path))
+            self.assertTrue(report["ok"], report)
+            identity = report["data"].get("identity")
+            self.assertIsNotNone(identity, report)
+            self.assertEqual(identity.get("content_hash"), expected_hash)
+            self.assertEqual(identity.get("sample_rate"), 8000)
+            self.assertEqual(identity.get("channels"), 1)
+            self.assertEqual(identity.get("codec"), "pcm_s16le")
+            self.assertEqual(identity.get("duration_us"), 200_000)
+
+    def test_precomputed_path_identity_is_preserved_without_probe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "precomputed.wav"
+            path.write_bytes(b"not-a-real-media-but-hashable")
+            supplied_identity = {
+                "content_hash": "sha256:supplied",
+                "duration_us": 1_000_000,
+                "sample_rate": 16_000,
+                "channels": 1,
+                "codec": "pcm_s16le",
+            }
+            report = extract_waveform_evidence({
+                "path": str(path),
+                "duration_us": 1_000_000,
+                "pauses": [],
+                "identity": supplied_identity,
+            })
+            self.assertTrue(report["ok"], report)
+            self.assertEqual(report["data"]["identity"], supplied_identity)
+
+    def test_alignment_plan_records_complete_audio_identity(self):
+        identity = {
+            "content_hash": "sha256:audio",
+            "duration_us": 1_000_000,
+            "sample_rate": 16_000,
+            "channels": 1,
+            "codec": "pcm_s16le",
+        }
+        subtitles = [{
+            "id": "cue-1",
+            "semantic_unit_id": "u1",
+            "text": "身份校验",
+            "start_us": 200_000,
+            "end_us": 500_000,
+        }]
+        report = build_waveform_alignment_plan({
+            "duration_us": 1_000_000,
+            "pauses": [],
+            "identity": identity,
+        }, subtitles)
+        self.assertTrue(report["ok"], report)
+        evidence = next(
+            item for item in report["data"]["source"]["evidence"]
+            if item.get("kind") == "edited_audio"
+        )
+        self.assertEqual(evidence.get("identity"), identity)
 
     def test_waveform_alignment_does_not_promote_word_times_without_pause(self):
         subtitles = [{
@@ -687,6 +757,53 @@ class RoughcutToolTests(unittest.TestCase):
                 ])
             self.assertEqual(code, 0, output.getvalue())
             self.assertIn('"subtitle_mode": "existing"', output.getvalue())
+
+    def test_cli_validate_alignment_blocks_current_audio_identity_mismatch(self):
+        identity = {
+            "content_hash": "sha256:plan-audio",
+            "duration_us": 1_000_000,
+            "sample_rate": 16_000,
+            "channels": 1,
+            "codec": "pcm_s16le",
+        }
+        subtitles = [{
+            "id": "cue-1",
+            "semantic_unit_id": "u1",
+            "text": "身份不一致",
+            "start_us": 200_000,
+            "end_us": 500_000,
+        }]
+        plan_report = build_waveform_alignment_plan({
+            "duration_us": 1_000_000,
+            "pauses": [],
+            "identity": identity,
+        }, subtitles)
+        self.assertTrue(plan_report["ok"], plan_report)
+        current_identity = dict(identity)
+        current_identity["content_hash"] = "sha256:current-audio"
+        current_identity["sample_rate"] = 48_000
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan_path = root / "plan.json"
+            audio_path = root / "audio.json"
+            plan_path.write_text(json.dumps(plan_report, ensure_ascii=False), encoding="utf-8")
+            audio_path.write_text(json.dumps({
+                "duration_us": 1_000_000,
+                "pauses": [],
+                "identity": current_identity,
+            }, ensure_ascii=False), encoding="utf-8")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = roughcut_main([
+                    "validate",
+                    "alignment",
+                    str(plan_path),
+                    "--audio",
+                    str(audio_path),
+                ])
+            self.assertEqual(code, 1, output.getvalue())
+            report = json.loads(output.getvalue())
+            self.assertTrue(any("identity mismatch" in error for error in report.get("errors", [])), report)
 
     def test_cli_subtitle_generate_writes_plan_and_srt(self):
         with tempfile.TemporaryDirectory() as directory:

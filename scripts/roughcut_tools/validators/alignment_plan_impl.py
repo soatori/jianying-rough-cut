@@ -42,6 +42,19 @@ def nonempty(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def valid_repeat_intent(value: Any) -> bool:
+    if not isinstance(value, dict) or value.get("intentional") is not True:
+        return False
+    evidence = value.get("evidence")
+    if nonempty(evidence):
+        return True
+    return (
+        isinstance(evidence, list)
+        and bool(evidence)
+        and all(nonempty(item) for item in evidence)
+    )
+
+
 def string_list(path: str, value: Any, errors: list[str], *, required: bool = False) -> list[str]:
     if not isinstance(value, list):
         errors.append(f"{path}: must be an array of strings")
@@ -140,8 +153,39 @@ def validate(plan: Any) -> dict[str, Any]:
             for index, item in enumerate(evidence):
                 if not isinstance(item, dict) or not nonempty(item.get("kind")):
                     errors.append(f"source.evidence[{index}] must contain kind")
-                elif isinstance(item.get("kind"), str):
-                    kinds.add(item["kind"])
+                    continue
+                kind = item["kind"]
+                kinds.add(kind)
+                if kind != "edited_audio":
+                    continue
+                if "identity" not in item:
+                    warnings.append(
+                        f"source.evidence[{index}] edited_audio identity is unavailable; "
+                        "record content hash, duration, sample rate, channels, and codec"
+                    )
+                    continue
+                identity = item["identity"]
+                identity_path = f"source.evidence[{index}].identity"
+                if not isinstance(identity, dict):
+                    errors.append(f"{identity_path} must be an object")
+                    continue
+                if not nonempty(identity.get("content_hash")):
+                    errors.append(f"{identity_path}.content_hash is required")
+                duration_identity = identity.get("duration_us")
+                if not is_int(duration_identity) or duration_identity <= 0:
+                    errors.append(f"{identity_path}.duration_us must be a positive integer")
+                elif duration_us is not None and duration_identity != duration_us:
+                    errors.append(
+                        f"{identity_path}.duration_us must match source.duration_us"
+                    )
+                sample_rate = identity.get("sample_rate")
+                if not is_int(sample_rate) or sample_rate <= 0:
+                    errors.append(f"{identity_path}.sample_rate must be a positive integer")
+                channels = identity.get("channels")
+                if not is_int(channels) or channels <= 0:
+                    errors.append(f"{identity_path}.channels must be a positive integer")
+                if not nonempty(identity.get("codec")):
+                    errors.append(f"{identity_path}.codec is required")
             if not kinds & {"edited_audio", "waveform"}:
                 errors.append("source.evidence must include edited_audio or waveform evidence")
 
@@ -272,6 +316,11 @@ def validate(plan: Any) -> dict[str, Any]:
         review = unit.get("review_status", "pending")
         if review not in REVIEW_STATUS:
             errors.append(f"{path}.review_status is invalid")
+        repeat_intent = unit.get("repeat_intent")
+        if repeat_intent is not None and not valid_repeat_intent(repeat_intent):
+            errors.append(
+                f"{path}.repeat_intent must be an intentional object with non-empty evidence"
+            )
         corrections = unit.get("corrections", [])
         if not isinstance(corrections, list):
             errors.append(f"{path}.corrections must be an array")
@@ -281,6 +330,22 @@ def validate(plan: Any) -> dict[str, Any]:
                     errors.append(f"{path}.corrections[{cindex}] must contain kind")
                 elif not nonempty(correction.get("reason")):
                     errors.append(f"{path}.corrections[{cindex}].reason is required")
+
+    for previous, current in zip(units, units[1:]):
+        if (
+            isinstance(previous, dict)
+            and isinstance(current, dict)
+            and nonempty(previous.get("text"))
+            and previous.get("text") == current.get("text")
+            and not (
+                valid_repeat_intent(previous.get("repeat_intent"))
+                or valid_repeat_intent(current.get("repeat_intent"))
+            )
+        ):
+            warnings.append(
+                f"{previous.get('id')} and {current.get('id')} have identical text; "
+                "confirm that the repetition is intentional"
+            )
 
     review = plan.get("review")
     if not isinstance(review, dict):
