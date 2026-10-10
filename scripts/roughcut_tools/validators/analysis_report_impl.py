@@ -5,9 +5,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from .review_gates import collect_review_gates
+
 REPORT_TYPES = {"final_draft_audit", "timeline_comparison"}
 TEXT_AUTHORITIES = {"final_visible_subtitle", "approved_subtitle_alignment"}
-REVIEW_STATUSES = {"pending", "human_review", "approved", "not_required"}
+REVIEW_STATUSES = {"pending", "approved", "not_required"}
 REMAP_STATUSES = {"not_required", "pending", "verified", "blocked"}
 SEMANTIC_ROLES = {
     "hook", "background", "question", "reaction", "answer", "evidence",
@@ -73,6 +75,7 @@ def validate(report: Any) -> dict[str, Any]:
     if not isinstance(report, dict):
         return {"ok": False, "errors": ["report must be a JSON object"], "warnings": []}
 
+    review_gates = collect_review_gates(report, errors)
     find_application_keys(report, "report", errors)
     if report.get("report_type") not in REPORT_TYPES:
         errors.append("report_type: unsupported report type")
@@ -164,7 +167,13 @@ def validate(report: Any) -> dict[str, Any]:
             errors.append(f"{path}.protected_fact_flags: required object")
         if not isinstance(group.get("needs_listen"), bool):
             errors.append(f"{path}.needs_listen: must be boolean")
-        if group.get("needs_listen") and group.get("review_status") not in {"human_review", "pending"}:
+        flags = group.get("flags", [])
+        listening_required = group.get("needs_listen") or (isinstance(flags, list) and "needs_listen" in flags)
+        if (
+            listening_required
+            and review_gates[path]["human_listening"] != "verified"
+            and group.get("review_status") != "pending"
+        ):
             errors.append(f"{path}.review_status: listening-required group must be reviewable")
         if group.get("review_status") not in REVIEW_STATUSES:
             errors.append(f"{path}.review_status: invalid")
@@ -186,8 +195,11 @@ def validate(report: Any) -> dict[str, Any]:
                 errors.append(f"{path}: type and summary are required")
             if item.get("review_status") not in REVIEW_STATUSES:
                 errors.append(f"{path}.review_status: invalid")
-            if item.get("type") in {"subtitle_audio_mismatch", "asr_final_mismatch", "text_mismatch"} and item.get("review_status") != "human_review":
-                errors.append(f"{path}: wording discrepancy must be human_review")
+            if (
+                item.get("type") in {"subtitle_audio_mismatch", "asr_final_mismatch", "text_mismatch"}
+                and (item.get("review_status") != "pending" or not review_gates[path]["human_review"])
+            ):
+                errors.append(f"{path}: wording discrepancy requires pending status and human_review flag")
 
     review = report.get("review")
     if not isinstance(review, dict):
@@ -206,4 +218,7 @@ def validate(report: Any) -> dict[str, Any]:
         if remap_status == "blocked":
             warnings.append("timeline comparison is blocked; downstream packaging must stop")
 
-    return {"ok": not errors, "errors": errors, "warnings": warnings, "semantic_group_count": len(groups)}
+    return {
+        "ok": not errors, "errors": errors, "warnings": warnings,
+        "semantic_group_count": len(groups), "review_gates": review_gates,
+    }

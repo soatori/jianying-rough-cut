@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from .review_gates import collect_review_gates
+
 ACTIONS = {"keep", "delete", "shorten", "reorder", "join", "review"}
 DESTRUCTIVE_ACTIONS = {"delete", "shorten", "reorder", "join"}
 PASSES = {"content", "refinement"}
@@ -248,7 +250,11 @@ def _validate_orientation(
         errors.append("domain_analysis.primary_domain is required")
     if domain.get("confidence") not in CONFIDENCE:
         errors.append("domain_analysis.confidence is invalid")
-    domain_unresolved = domain.get("status") == "uncertain" or domain.get("confidence") == "low"
+    domain_unresolved = (
+        domain.get("status") == "uncertain"
+        or domain.get("confidence") == "low"
+        or bool(domain.get("unresolved_terms"))
+    )
     for field in ("segments", "terms", "entities", "protected_facts", "unresolved_terms"):
         if field in domain and not isinstance(domain[field], list):
             errors.append(f"domain_analysis.{field} must be a list")
@@ -295,6 +301,8 @@ def validate(plan: Any) -> dict[str, Any]:
     warnings: list[str] = []
     if not isinstance(plan, dict):
         return {"ok": False, "errors": ["plan must be a JSON object"], "warnings": []}
+
+    review_gates = collect_review_gates(plan, errors)
 
     if plan.get("version") != 1:
         errors.append("version must be 1")
@@ -363,6 +371,8 @@ def validate(plan: Any) -> dict[str, Any]:
             flag for flag in flags
             if isinstance(flag, str) and flag in REVIEW_FLAGS
         } if isinstance(flags, list) else set()
+        if item.get("human_review") is True:
+            flag_set.add("human_review")
         if timebase is not None:
             _validate_range(item, prefix, timebase, duration, errors)
         precision = _validate_boundary(item, prefix, errors)
@@ -408,6 +418,7 @@ def validate(plan: Any) -> dict[str, Any]:
         "ok": not errors,
         "errors": errors,
         "warnings": warnings,
+        "review_gates": review_gates,
         "decision_count": len(decisions),
         "outline_unit_count": len((plan.get("outline") or {}).get("units", [])) if isinstance(plan.get("outline"), dict) else 0,
         "subtitle_alignment_status": alignment_phase_status,

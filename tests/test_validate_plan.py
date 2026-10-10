@@ -246,5 +246,105 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(rc, 0)
 
 
+    def test_missing_provenance_is_unavailable_without_mutation(self):
+        data = self.base()
+        row = data["decisions"][0]
+        row["cli_report"] = "deterministic evidence"
+        before = copy.deepcopy(data)
+        result = validate(data)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["review_gates"]["decisions[0]"]["provenance"], "unavailable")
+        self.assertEqual(result["review_gates"]["decisions[0]"]["human_listening"], "pending")
+        self.assertEqual(data, before)
+
+    def test_provenance_enum_and_types(self):
+        for value in ("script_generated", "agent_interpreted", "unavailable"):
+            data = self.base()
+            data["decisions"][0]["provenance"] = value
+            self.assertTrue(validate(data)["ok"], value)
+        for value in ("automatic", "human", None, [], {}):
+            data = self.base()
+            data["decisions"][0]["provenance"] = value
+            result = validate(data)
+            self.assertFalse(result["ok"], value)
+            self.assertTrue(any("provenance" in e for e in result["errors"]))
+
+    def test_script_output_cannot_grant_human_verified(self):
+        data = self.base()
+        data["decisions"][0].update(provenance="human_verified", cli_report="passed", human_review=True)
+        result = validate(data)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("human_verdict" in e for e in result["errors"]))
+
+    def test_recorded_human_verdict_can_verify(self):
+        data = self.base()
+        data["decisions"][0].update(provenance="human_verified", human_listening="verified",
+                   human_verdict={"actor": "human", "reviewer": "human reviewer", "verdict": "approved",
+                                  "scope": "human_listening", "evidence": "Recorded listening verdict"})
+        result = validate(data)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["review_gates"]["decisions[0]"]["human_listening"], "verified")
+
+    def test_agent_analysis_cannot_clear_human_listening(self):
+        data = self.base()
+        data["decisions"][0].update(provenance="agent_interpreted", human_listening="verified",
+                   playback="reviewed", waveform="checked")
+        result = validate(data)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["review_gates"]["decisions[0]"]["human_listening"], "pending")
+
+    def test_non_listening_verdict_does_not_clear_listening(self):
+        data = self.base()
+        data["decisions"][0].update(provenance="human_verified", human_listening="verified",
+                   human_verdict={"actor": "human", "reviewer": "human reviewer", "verdict": "approved",
+                                  "scope": "interpretation", "evidence": "Recorded text verdict"})
+        result = validate(data)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["review_gates"]["decisions[0]"]["human_listening"], "pending")
+
+    def test_malformed_or_rejected_verdict_cannot_verify(self):
+        for verdict in (None, {}, {"reviewer": "agent", "verdict": "approved"},
+                        {"actor": "human", "reviewer": "human reviewer", "verdict": "rejected",
+                         "scope": "human_listening", "evidence": "Not accepted"}):
+            data = self.base()
+            data["decisions"][0].update(provenance="human_verified", human_verdict=verdict)
+            self.assertFalse(validate(data)["ok"], verdict)
+
+    def test_script_or_agent_verdict_is_not_human(self):
+        for actor in ("script", "agent", None):
+            data = self.base()
+            data["decisions"][0].update(provenance="human_verified", human_listening="verified",
+                         human_verdict={"actor": actor, "reviewer": "automated reviewer",
+                                        "verdict": "approved", "scope": "human_listening",
+                                        "evidence": "Playback and waveform report"})
+            self.assertFalse(validate(data)["ok"], actor)
+
+    def test_invalid_listening_status_is_rejected(self):
+        for status in ("approved", None, [], {}):
+            data = self.base()
+            data["decisions"][0]["human_listening"] = status
+            self.assertFalse(validate(data)["ok"], status)
+
+    def test_evidence_provenance_is_validated(self):
+        data = self.base()
+        data["evidence"][0]["provenance"] = "human_verified"
+        self.assertFalse(validate(data)["ok"])
+
+    def test_human_review_is_boolean_flag(self):
+        data = self.base()
+        data["decisions"][0]["human_review"] = "approved"
+        self.assertFalse(validate(data)["ok"])
+
+
+    def test_unresolved_terms_block_each_high_confidence_destructive_action(self):
+        for action in ("delete", "shorten", "reorder", "join"):
+            plan = self.base()
+            plan["domain_analysis"]["unresolved_terms"] = ["Unresolved technical term"]
+            plan["decisions"][0].update(action=action, domain_sensitive=True)
+            result = validate(plan)
+            self.assertFalse(result["ok"], action)
+            self.assertTrue(any("domain-sensitive" in e for e in result["errors"]))
+
+
 if __name__ == "__main__":
     unittest.main()

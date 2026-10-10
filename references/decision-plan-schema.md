@@ -120,3 +120,58 @@ When `input.completeness.status` is `partial` or `unknown`, destructive decision
 ## Independence rule
 
 Plans must not contain `execution_handoff` or application-specific `keep_blocks`. A content plan may be reviewed, revised, or manually translated into another system later, but this schema does not define that translation.
+
+A domain-sensitive destructive decision (`delete`, `shorten`, `reorder`, or
+`join`) cannot have `confidence: high` when `domain_analysis.status` is
+`uncertain`, domain confidence is `low`, or `unresolved_terms` is non-empty.
+Review flags and human-verification claims do not override this restriction.
+
+
+## Provenance and human-review gates
+
+Every evidence or interpretation object may declare `provenance` using exactly
+`script_generated`, `agent_interpreted`, `human_verified`, or `unavailable`.
+The field is optional for compatibility. Omission means `unavailable`, never
+`script_generated` merely because a CLI report exists. Provenance is local to
+that object: parent provenance and verdicts do not verify child rows.
+`script_generated` describes deterministic evidence; `agent_interpreted`
+describes agent interpretation. Neither grants human authority.
+
+`human_verified` requires an externally recorded, approved `human_verdict` on
+that same object. A verdict is an object with these required fields:
+
+- `actor`: exactly `human`;
+- `reviewer`: non-empty string identifying the human reviewer;
+- `verdict`: exactly `approved` or `rejected`;
+- `scope`: exactly `evidence`, `interpretation`, or `human_listening`;
+- `evidence`: non-empty string recording or referencing the human verdict.
+
+A script/agent report, a review flag, a reviewer name alone, or an approval on
+another object is insufficient. Producers must record an actual human verdict;
+they must never manufacture one from playback or waveform analysis. Validation
+checks the supplied attestation's structure and scope, not the reviewer's identity
+or authenticity. A rejected verdict is valid as a record but cannot verify anything.
+
+`human_listening` is exactly `pending`, `verified`, `not_assessed`, or
+`unavailable`, and defaults to `pending`. Only explicit `verified` with an
+approved same-object verdict whose scope is `human_listening` clears the gate.
+A verdict about evidence or interpretation cannot clear listening. Use
+`not_assessed` only for out-of-scope listening and `unavailable` for required
+evidence that cannot be evaluated; when `needs_listen` is true or appears in
+`flags`, listening must stay `pending` until verified. Agent playback and
+waveform analysis cannot clear this gate.
+
+`human_review` is an optional boolean flag, also expressible as `human_review`
+in the existing `flags` array. It is never a workflow or review status, never
+an approval, and does not itself clear listening. When both flag forms are
+present, either true form marks the row for human review.
+
+The existing validation result retains `ok`, `errors`, `warnings`, and counts,
+and adds `review_gates`: a mapping from object paths to effective `provenance`,
+`human_listening`, and boolean `human_review`. All input objects are represented,
+including nested evidence and interpretation rows; the root path is `root`.
+Verdict records themselves are excluded. The validator does not modify the input.
+Invalid claims fail validation; unsupported provenance or unsubstantiated
+`human_verified` is reported effectively as `unavailable`, and unsubstantiated
+listening verification remains `pending`. A successful schema check alone is
+not completed human review.

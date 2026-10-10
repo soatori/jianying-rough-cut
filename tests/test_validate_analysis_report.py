@@ -1,14 +1,11 @@
 import copy
-import importlib.util
+import sys
 import unittest
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "roughcut_tools" / "validators" / "analysis_report_impl.py"
-SPEC = importlib.util.spec_from_file_location("validate_analysis_report", SCRIPT)
-if SPEC is None or SPEC.loader is None:
-    raise RuntimeError(f"cannot load {SCRIPT}")
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+SCRIPT_ROOT = Path(__file__).resolve().parents[1] / "scripts"
+sys.path.insert(0, str(SCRIPT_ROOT))
+from roughcut_tools.validators import analysis_report_impl as MODULE
 
 
 def valid_report():
@@ -84,6 +81,129 @@ class AnalysisReportTests(unittest.TestCase):
         before = copy.deepcopy(report)
         MODULE.validate(report)
         self.assertEqual(report, before)
+
+
+    def test_missing_provenance_is_unavailable_without_mutation(self):
+        data = valid_report()
+        row = data["semantic_groups"][0]
+        row["cli_report"] = "deterministic evidence"
+        before = copy.deepcopy(data)
+        result = MODULE.validate(data)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["review_gates"]["semantic_groups[0]"]["provenance"], "unavailable")
+        self.assertEqual(result["review_gates"]["semantic_groups[0]"]["human_listening"], "pending")
+        self.assertEqual(data, before)
+
+    def test_provenance_enum_and_types(self):
+        for value in ("script_generated", "agent_interpreted", "unavailable"):
+            data = valid_report()
+            data["semantic_groups"][0]["provenance"] = value
+            self.assertTrue(MODULE.validate(data)["ok"], value)
+        for value in ("automatic", "human", None, [], {}):
+            data = valid_report()
+            data["semantic_groups"][0]["provenance"] = value
+            result = MODULE.validate(data)
+            self.assertFalse(result["ok"], value)
+            self.assertTrue(any("provenance" in e for e in result["errors"]))
+
+    def test_script_output_cannot_grant_human_verified(self):
+        data = valid_report()
+        data["semantic_groups"][0].update(provenance="human_verified", cli_report="passed", human_review=True)
+        result = MODULE.validate(data)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("human_verdict" in e for e in result["errors"]))
+
+    def test_recorded_human_verdict_can_verify(self):
+        data = valid_report()
+        data["semantic_groups"][0].update(provenance="human_verified", human_listening="verified",
+                   human_verdict={"actor": "human", "reviewer": "human reviewer", "verdict": "approved",
+                                  "scope": "human_listening", "evidence": "Recorded listening verdict"})
+        result = MODULE.validate(data)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["review_gates"]["semantic_groups[0]"]["human_listening"], "verified")
+
+    def test_agent_analysis_cannot_clear_human_listening(self):
+        data = valid_report()
+        data["semantic_groups"][0].update(provenance="agent_interpreted", human_listening="verified",
+                   playback="reviewed", waveform="checked")
+        result = MODULE.validate(data)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["review_gates"]["semantic_groups[0]"]["human_listening"], "pending")
+
+    def test_non_listening_verdict_does_not_clear_listening(self):
+        data = valid_report()
+        data["semantic_groups"][0].update(provenance="human_verified", human_listening="verified",
+                   human_verdict={"actor": "human", "reviewer": "human reviewer", "verdict": "approved",
+                                  "scope": "interpretation", "evidence": "Recorded text verdict"})
+        result = MODULE.validate(data)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["review_gates"]["semantic_groups[0]"]["human_listening"], "pending")
+
+    def test_malformed_or_rejected_verdict_cannot_verify(self):
+        for verdict in (None, {}, {"reviewer": "agent", "verdict": "approved"},
+                        {"actor": "human", "reviewer": "human reviewer", "verdict": "rejected",
+                         "scope": "human_listening", "evidence": "Not accepted"}):
+            data = valid_report()
+            data["semantic_groups"][0].update(provenance="human_verified", human_verdict=verdict)
+            self.assertFalse(MODULE.validate(data)["ok"], verdict)
+
+    def test_script_or_agent_verdict_is_not_human(self):
+        for actor in ("script", "agent", None):
+            data = valid_report()
+            data["semantic_groups"][0].update(provenance="human_verified", human_listening="verified",
+                         human_verdict={"actor": actor, "reviewer": "automated reviewer",
+                                        "verdict": "approved", "scope": "human_listening",
+                                        "evidence": "Playback and waveform report"})
+            self.assertFalse(MODULE.validate(data)["ok"], actor)
+
+    def test_invalid_listening_status_is_rejected(self):
+        for status in ("approved", None, [], {}):
+            data = valid_report()
+            data["semantic_groups"][0]["human_listening"] = status
+            self.assertFalse(MODULE.validate(data)["ok"], status)
+
+    def test_evidence_provenance_is_validated(self):
+        data = valid_report()
+        data["evidence"][0]["provenance"] = "human_verified"
+        self.assertFalse(MODULE.validate(data)["ok"])
+
+    def test_human_review_is_boolean_flag(self):
+        data = valid_report()
+        data["semantic_groups"][0]["human_review"] = "approved"
+        self.assertFalse(MODULE.validate(data)["ok"])
+
+
+    def test_human_review_is_not_a_status(self):
+        report = valid_report()
+        report["semantic_groups"][0]["review_status"] = "human_review"
+        self.assertFalse(MODULE.validate(report)["ok"])
+
+    def test_wording_discrepancy_uses_pending_status_and_flag(self):
+        report = valid_report()
+        report["discrepancies"] = [{"type": "text_mismatch", "summary": "Wording differs",
+                                    "review_status": "pending", "flags": ["human_review"]}]
+        self.assertTrue(MODULE.validate(report)["ok"])
+
+    def test_pending_listening_blocks_approved_group(self):
+        report = valid_report()
+        report["semantic_groups"][0].update(needs_listen=True)
+        self.assertFalse(MODULE.validate(report)["ok"])
+        report["semantic_groups"][0].update(review_status="pending", human_review=True)
+        self.assertTrue(MODULE.validate(report)["ok"])
+
+
+    def test_listening_flag_also_blocks_approved_group(self):
+        report = valid_report()
+        report["semantic_groups"][0]["flags"] = ["needs_listen"]
+        self.assertFalse(MODULE.validate(report)["ok"])
+
+    def test_recorded_listening_allows_listening_required_approval(self):
+        report = valid_report()
+        report["semantic_groups"][0].update(
+            needs_listen=True, provenance="human_verified", human_listening="verified",
+            human_verdict={"actor": "human", "reviewer": "human reviewer", "verdict": "approved",
+                           "scope": "human_listening", "evidence": "Recorded listening approval"})
+        self.assertTrue(MODULE.validate(report)["ok"])
 
 
 if __name__ == "__main__":
