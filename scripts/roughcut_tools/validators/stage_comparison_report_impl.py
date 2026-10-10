@@ -12,6 +12,11 @@ RELATIONSHIPS = ("containment", "overlap", "deletion", "addition", "reorder")
 INVENTORY = ("duration", "segment_count", *RELATIONSHIPS, "pause_evidence",
              "no_asr_spans", "protected_fact_exposure", "unresolved_term_exposure")
 PURPOSES = ("content_completeness", "stage_delta", "preservation")
+REPORT_KEYS = {"report_type", "purpose", "scope", "stages"}
+STAGE_KEYS = {"stage_ref", "role", "authority", "baseline", "relationships",
+              *(field for field in INVENTORY if field not in RELATIONSHIPS)}
+BASELINE_KEYS = {"status", "stage_ref", "designation"}
+FINDING_KEYS = {"status", "value", "evidence", "verdict"}
 FORBIDDEN = {
     "fine_cut_direction", "cleanup_candidates", "proposed_changes", "instructions",
     "action", "actions", "edit_plan", "delete", "shorten", "join",
@@ -19,11 +24,20 @@ FORBIDDEN = {
     "segment_id", "material_id", "asset_id", "json_path", "target_locator", "source_locator",
     "replica_paths", "replica_manifest", "encryption", "execution_handoff", "write",
     "write_back", "write_back_instructions", "apply", "execution", "clone",
+    "timeline_id", "project_id", "draft_id", "track_path", "segment_path",
+    "jianying_locator", "project_locator", "locator", "locators",
 }
 
 
 def nonempty(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def check_allowed_keys(value: dict[str, Any], allowed: set[str], path: str,
+                       errors: list[str]) -> None:
+    for key in value:
+        if key not in allowed:
+            errors.append(f"{path}.{key}: undeclared structural field is not allowed")
 
 
 def check_read_only(value: Any, path: str, errors: list[str]) -> None:
@@ -42,6 +56,7 @@ def check_finding(value: Any, path: str, field: str, in_scope: bool,
     if not isinstance(value, dict):
         errors.append(f"{path}: required evidence object")
         return
+    check_allowed_keys(value, FINDING_KEYS, path, errors)
     status = value.get("status")
     allowed = ("available", "unavailable") if in_scope else ("not_assessed",)
     if status not in allowed:
@@ -90,6 +105,7 @@ def validate(report: Any) -> dict[str, Any]:
         errors.append("report: must be a JSON object")
     else:
         check_read_only(report, "report", errors)
+        check_allowed_keys(report, REPORT_KEYS, "report", errors)
         if report.get("report_type") != "stage_comparison":
             errors.append("report_type: must be stage_comparison")
         purpose = report.get("purpose")
@@ -111,6 +127,7 @@ def validate(report: Any) -> dict[str, Any]:
             if not isinstance(stage, dict):
                 errors.append(f"{path}: required object")
                 continue
+            check_allowed_keys(stage, STAGE_KEYS, path, errors)
             ref = stage.get("stage_ref")
             if not nonempty(ref):
                 errors.append(f"{path}.stage_ref: required non-empty local reference")
@@ -127,6 +144,8 @@ def validate(report: Any) -> dict[str, Any]:
                 continue
             path = f"stages[{index}]"
             baseline = stage.get("baseline")
+            if isinstance(baseline, dict):
+                check_allowed_keys(baseline, BASELINE_KEYS, f"{path}.baseline", errors)
             available = False
             if not isinstance(baseline, dict) or baseline.get("status") not in ("available", "unavailable"):
                 errors.append(f"{path}.baseline: required available/unavailable baseline object")
@@ -152,6 +171,7 @@ def validate(report: Any) -> dict[str, Any]:
             if not isinstance(relationships, dict):
                 errors.append(f"{path}.relationships: required object")
                 relationships = {}
+            check_allowed_keys(relationships, set(RELATIONSHIPS), f"{path}.relationships", errors)
             for field in INVENTORY:
                 container = relationships if field in RELATIONSHIPS else stage
                 field_path = f"{path}.relationships.{field}" if field in RELATIONSHIPS else f"{path}.{field}"

@@ -202,6 +202,13 @@ fields fail validation. Fine-cut direction, cleanup candidates, proposed
 changes, action instructions, project locators, execution handoffs, and
 write-back fields are forbidden even when nested inside observations or arrays.
 
+Report, stage, baseline, relationship-map, and evidence objects accept only
+their declared structural keys above. Unknown keys fail validation rather than
+being silently ignored. Observation rows remain extensible for read-only
+metadata; all nested metadata is still checked for forbidden fields, including
+`timeline_id`, `project_id`, `draft_id`, and locator fields. Extension metadata
+does not authorize project references or editing instructions.
+
 ### Optional content_edit fine-cut review report
 
 Keep the semantic/cut-risk section and the shared comparison inventory in one report. This report is optional follow-on planning for `content_edit` only.

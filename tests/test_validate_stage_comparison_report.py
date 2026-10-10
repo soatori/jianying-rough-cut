@@ -164,6 +164,57 @@ class StageComparisonReportTests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertTrue(any(key in error for error in result["errors"]))
 
+    def test_undeclared_structural_fields_rejected(self):
+        for location in ("report", "stage", "baseline", "relationships", "finding",
+                         "unavailable_baseline", "unavailable_finding", "not_assessed_finding"):
+            with self.subTest(location=location):
+                report = valid_report()
+                stage = report["stages"][0]
+                if location == "not_assessed_finding":
+                    report["scope"].remove("duration")
+                    for item in report["stages"]:
+                        item["duration"] = {"status": "not_assessed", "verdict": "UNVERIFIED"}
+                containers = {
+                    "report": report, "stage": stage, "baseline": stage["baseline"],
+                    "relationships": stage["relationships"], "finding": stage["duration"],
+                    "unavailable_baseline": report["stages"][1]["baseline"],
+                    "unavailable_finding": report["stages"][1]["relationships"]["overlap"],
+                    "not_assessed_finding": stage["duration"],
+                }
+                containers[location]["undeclared_field"] = "Unexpected structural data"
+                result = self.validate(report)
+                self.assertFalse(result["ok"])
+                self.assertTrue(any("undeclared_field" in error for error in result["errors"]))
+
+    def test_project_locators_rejected_at_root_and_in_extensible_metadata(self):
+        for key in ("timeline_id", "project_id", "draft_id", "track_path", "segment_path",
+                    "jianying_locator", "project_locator", "locator", "locators"):
+            for location in ("report", "metadata"):
+                with self.subTest(key=key, location=location):
+                    report = valid_report()
+                    container = report
+                    if location == "metadata":
+                        container = {key: "Application reference"}
+                        report["stages"][0]["no_asr_spans"]["value"] = [{
+                            "observation": "Unrecognized speech needs review",
+                            "metadata": {"nested": [container]},
+                        }]
+                    else:
+                        container[key] = "Application reference"
+                    result = self.validate(report)
+                    self.assertFalse(result["ok"])
+                    self.assertTrue(any(key in error for error in result["errors"]))
+
+    def test_read_only_observation_metadata_remains_extensible(self):
+        report = valid_report()
+        report["stages"][0]["no_asr_spans"]["value"] = [{
+            "observation": "Unrecognized speech needs review",
+            "metadata": {"review_notes": [{"confidence": "uncertain"}]},
+        }]
+        before = copy.deepcopy(report)
+        self.assertTrue(self.validate(report)["ok"])
+        self.assertEqual(report, before)
+
     def test_malformed_reports_return_validation_errors(self):
         for report in (None, [], {}, {"report_type": []},
                        dict(valid_report(), stages=[]), dict(valid_report(), scope=[{}])):
