@@ -32,6 +32,16 @@ For **content_edit**, choose the entry by source evidence:
 6. Once stable or approved, refine delivery: review fillers, false starts, repetitions, pauses, and joins in context. Re-audition every proposed change.
 7. Proofread current subtitles or generate a separate pending alignment plan from a timed transcript. After human review, record learning and stage differences without changing a draft.
 
+### Source, rough-cut, and manual-fine comparison conversations
+
+When multiple edit stages are supplied, classify each as source, rough cut, optional delivery-preparation, manual fine cut, or reference before comparing them. Read [references/rough-fine-stage-flow.md](references/rough-fine-stage-flow.md) for the full conversation contract.
+
+- Rough cut owns theme, complete semantic units, content selection, and major order; fine cut owns delivery density, local cleanup, visual breathing, and joins.
+- Ask for editorial direction once at semantic-block level, not approval for every physical cut.
+- User-saved manual selections and boundaries outrank ASR-derived deletion proposals; ASR never authorizes an automatic deletion.
+- If a fine cut materially deletes or reorders content, breaks a question-answer pair, or loses a protected technical condition, return that decision to rough-cut review.
+- Compare semantic paragraphs separately from physical cuts, and mark pause, no-ASR, or join conclusions as `human_listening` only after actual listening.
+
 A missing source or unresolved term can leave review candidates, but it blocks high-confidence destructive decisions for the affected material. For unscripted material, agree scope and order once at block level before the outline is locked; do not ask for approval on every cut.
 
 For **subtitle_alignment**, first establish that edited-timeline audio and subtitle state are readable, then follow the subtitle route below. For **final_draft_audit**, use the read-only report contract.
@@ -56,6 +66,7 @@ Read only the material needed for the selected task:
 - Correction and source orientation: [references/transcript-correction-gate.md](references/transcript-correction-gate.md), [references/domain-and-outline.md](references/domain-and-outline.md), and [references/content-analysis.md](references/content-analysis.md).
 - Multi-speaker material: [references/dialogue-and-qa.md](references/dialogue-and-qa.md).
 - Delivery refinement: [references/speech-cleanup.md](references/speech-cleanup.md), [references/cut-case-law.md](references/cut-case-law.md), and [references/audio-boundaries.md](references/audio-boundaries.md).
+- Multi-stage source/rough/manual-fine comparison and conversation flow: [references/rough-fine-stage-flow.md](references/rough-fine-stage-flow.md), with sequence evidence in [references/timeline-comparison.md](references/timeline-comparison.md).
 - Subtitle proofing/alignment: [references/subtitle-proofreading-and-audio-alignment.md](references/subtitle-proofreading-and-audio-alignment.md) and [references/alignment-plan.md](references/alignment-plan.md).
 - Workflow state, report/plan contracts, and automated preparation: [references/workflow-state.md](references/workflow-state.md), [references/decision-plan-schema.md](references/decision-plan-schema.md), [references/analysis-report-schema.md](references/analysis-report-schema.md), [references/verification-levels.md](references/verification-levels.md), and [references/scripted-workflow.md](references/scripted-workflow.md).
 - Human-reviewed preferences and dictionaries: [references/preference-and-dictionary.md](references/preference-and-dictionary.md).
