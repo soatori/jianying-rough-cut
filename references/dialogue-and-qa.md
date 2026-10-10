@@ -31,6 +31,8 @@ Every highlight group records:
 - whether it contains a number, model, brand, unit, condition, negation, comparison, or technical fact;
 - whether it requires human listening before any downstream packaging.
 
+Keep the question and its answer as separate semantic units for downstream packaging. The handoff must expose `speaker_id`, `turn_role`, and confidence for each unit; packaging decides whether to group them visually and must not infer a missing speaker silently.
+
 The role is an editorial handoff only. It does not choose a flower-text template, position, motion, or sound.
 
 A host's long framing may contain the guest's eventual answer. When the guest states the same point fully, retain the actual question and prefer the guest's complete expression. Preserve host context that the answer otherwise lacks.
