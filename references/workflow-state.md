@@ -64,3 +64,10 @@ Preparation does not set `content_pass` or `subtitle_alignment` to `stable` or
 membership/order or protected-fact changes reopen rough-cut review and
 `content_pass: draft`. See [scripted-workflow.md](scripted-workflow.md) for exact
 counting units, pending categories, and partial-path behavior.
+
+## Automation boundary
+
+For the division between deterministic scripts, Agent interpretation, and
+human approval, read [automation-boundary.md](automation-boundary.md).
+Prioritize reducing repetitive search and candidate generation first; keep
+semantic approval, protected-fact decisions, and listening gates human-owned.
