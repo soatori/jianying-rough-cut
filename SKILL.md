@@ -30,17 +30,17 @@ For **content_edit**, choose the entry by source evidence:
 3. Orient to the whole source: identify its thesis, audience, domain, speakers, outline, dependencies, and protected facts.
 4. Produce the content rough-cut plan from complete semantic units. Audit it against the full source for missing context, altered claims, broken Q&A, lost technical conditions, and logic/order problems.
 5. Record `content_pass: draft` after evidence collection. Set it to `stable` only after the semantic self-audit, and to `approved` only after explicit user approval.
-6. Once stable or approved, refine delivery: review fillers, false starts, repetitions, pauses, and joins in context. Audition every proposed change when audio access is available; otherwise keep `human_listening` pending.
+6. Once stable or approved, refine delivery: review fillers, false starts, repetitions, pauses, and joins in context. Have a human audition proposed changes where possible and record the verdict. Agent playback or waveform analysis does not clear `human_listening`; without a person's recorded verdict, keep it pending.
 7. Proofread current subtitles or generate a separate pending alignment plan from a timed transcript. After human review, record learning and stage differences without changing a draft.
 
 ### Multi-stage comparison conversations
 
-Classify supplied stages neutrally as `source`, `rough cut`, `intermediate edit stage`, `manual fine cut`, or `reference`; AI- or selected-phrase preparation is only an example of an intermediate edit stage. Read [references/rough-fine-stage-flow.md](references/rough-fine-stage-flow.md) for the comparison baselines, report fields, gates, and state transitions.
+Classify supplied stages neutrally as `source`, `rough cut`, `intermediate edit stage`, `manual fine cut`, or `reference`; automated or phrase-selected preparation is only an example of an intermediate edit stage. `stage_comparison` stops after its read-only comparison report and must not enter fine-cut direction, cleanup candidates, or proposed changes. Only `content_edit` may proceed into that optional follow-on planning. Read [references/rough-fine-stage-flow.md](references/rough-fine-stage-flow.md) for the comparison baselines, report fields, gates, and state transitions.
 
 - Read-only comparison and evidence collection are allowed even when `content_pass` is `draft`.
 - Preserve user-saved manual selections and boundaries by default unless the user explicitly asks to revise them. ASR may identify candidates but never authorizes deletion.
 - Escalate a fine-cut change to rough-cut review whenever semantic-unit membership or order changes meaning, support, context, Q&A integrity, or any protected fact/relationship. Only nonsemantic local delivery cleanup remains fine-cut work.
-- A rough/fine boundary violation reopens `content_pass` as `draft` and adds `human_review`.
+- A rough/fine boundary violation reopens `content_pass` as `draft` and adds the `human_review` flag to affected decisions and report rows; `human_review` is not a workflow state.
 
 ## Evidence and decision rules
 

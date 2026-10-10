@@ -10,7 +10,9 @@ The skills share these handoff states:
 | `packaging_apply` | `dry_run`, `applied`, `verified` | `jianying-editor` | the approved package was prepared, written, and independently read back |
 | `visual_audio_review` | `pending`, `passed`, `needs_revision` | human/editorial review | the reopened Jianying result matches the intended visible and audible result |
 
-`jianying-rough-cut` owns editorial decisions and plan status only. `jianying-editor` owns project probing, timeline reads/writes, cloning, and execution of approved ranges. A `content_pass` value never by itself means that project execution occurred.
+`jianying-rough-cut` owns editorial decisions and plan status only. `jianying-editor` owns project probing, timeline reads/writes, cloning, and execution of approved ranges. A `content_pass` value or plan approval never by itself means that project execution occurred. If execution is required before a later stage, record an explicit `jianying-editor`-owned handoff/checkpoint confirming execution; without it, the later stage remains pending.
+
+`human_review` is a flag on affected decisions or report rows, not a workflow state.
 
 The normal gate is:
 
