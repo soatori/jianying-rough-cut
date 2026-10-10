@@ -52,6 +52,7 @@ from roughcut_tools.validators import (
     validate_analysis_report,
     validate_decision_plan,
 )
+from roughcut_tools.validators.stage_comparison_report import validate_stage_comparison_report
 from roughcut_tools.waveform import build_waveform_alignment_plan
 from roughcut_tools.workflow import run_fixed_workflow
 
@@ -127,6 +128,8 @@ def _alignment_plan_for_srt(report: dict[str, Any]) -> dict[str, Any] | None:
 
 def _run(args: argparse.Namespace) -> dict[str, Any]:
     if args.command == "validate":
+        if args.kind == "comparison-report":
+            return validate_stage_comparison_report(unwrap_report(load_json(args.path)))
         if args.kind == "plan":
             return _validated("decision_plan_validation", validate_decision_plan(unwrap_report(load_json(args.path))))
         if args.kind == "alignment":
@@ -267,7 +270,7 @@ def _parser() -> argparse.ArgumentParser:
 
     validate = sub.add_parser("validate")
     validate_sub = validate.add_subparsers(dest="kind", required=True)
-    for kind in ("plan", "alignment", "report", "learning"):
+    for kind in ("plan", "alignment", "report", "learning", "comparison-report"):
         item = validate_sub.add_parser(kind)
         item.add_argument("path")
     generic = validate_sub.add_parser("generic")

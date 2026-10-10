@@ -127,6 +127,81 @@ Use `not_assessed` when a field is outside the requested scope. Use `unavailable
 
 Use the shared comparison inventory. This report remains read-only and contains no fine-cut direction, cleanup candidates, or proposed changes. Deliver it and stop.
 
+#### Machine-readable comparison contract
+
+Validate the standalone JSON report with:
+
+```powershell
+python -X utf8 scripts/roughcut_tool.py validate comparison-report comparison-report.json
+```
+
+The command reads the supplied report and prints a `stage_comparison_report_validation`
+result envelope (`ok`, `status`, `errors`, `input_errors`, `warnings`, `summary`,
+`data`). It does not open or modify Jianying projects. Exit codes are zero for a
+valid contract, one for invalid report content, and two for input/CLI errors.
+A valid contract can still have unavailable evidence: warnings produce `review`
+status, and validation never proves the observations or clears human listening.
+
+The public Python interface is
+`roughcut_tools.validators.stage_comparison_report.validate_stage_comparison_report(report)`.
+It returns the same envelope without changing the input.
+
+Report fields:
+
+| Field | Contract |
+| --- | --- |
+| `report_type` | `stage_comparison` |
+| `purpose` | `content_completeness`, `stage_delta`, or `preservation` |
+| `scope` | Nonempty, unique array of requested inventory field names below |
+| `stages` | Nonempty array containing every supplied stage |
+
+Each stage requires a nonempty unique local `stage_ref`, a canonical `role` from
+the stage contract, `authority: yes|no|unknown`, and a `baseline` object.
+Local references link supplied stages; they are not Jianying locators.
+Available baselines use `status: available`, a supplied `stage_ref`, and
+`designation: user_designated` for stage deltas or preservation. Content
+completeness instead uses `designation: source_role` and references a `source`
+stage. Preservation references the user-designated `manual fine cut` with
+`authority: yes`. When the baseline is missing, use `{"status":"unavailable"}`
+without a reference or designation. Never infer the preceding accepted stage.
+
+Every stage includes `duration`, `segment_count`, `pause_evidence`,
+`no_asr_spans`, `protected_fact_exposure`, `unresolved_term_exposure`, and
+`relationships` containing `containment`, `overlap`, `deletion`, `addition`,
+and `reorder`. These eleven evidence field names are the allowed `scope` entries.
+Each evidence field has its own object and verdict:
+
+```json
+{"status":"available","value":[],"evidence":["Supplied evidence description"],"verdict":"UNVERIFIED"}
+```
+
+- In-scope fields use `available` with a value and a nonempty array of evidence
+  descriptions, or `unavailable` when required evidence is missing.
+- Out-of-scope fields must remain present as
+  `{"status":"not_assessed","verdict":"UNVERIFIED"}`.
+- Unavailable fields use `{"status":"unavailable","verdict":"UNVERIFIED"}`.
+  They contain neither a value nor evidence; never insert guessed zero counts.
+- Available `duration.value` is a finite nonnegative number in seconds;
+  `segment_count.value` is a nonnegative integer. Booleans are not counts.
+- Available relationship values are nonempty observation strings. If the
+  baseline is unavailable, all in-scope relationships must be unavailable too.
+- Other available values are arrays of objects with a nonempty `observation`.
+  Pause rows additionally require `functional_class`; duration alone is not
+  functional evidence. An empty array means observed none, not missing evidence.
+- Verdicts are `PASS|UNVERIFIED`. A `PASS` requires available evidence; apply the
+  weakest-tier and human-listening rules above before asserting it.
+
+For example, a required duration that cannot be measured is represented by:
+
+```json
+{"duration":{"status":"unavailable","verdict":"UNVERIFIED"}}
+```
+
+This fragment belongs inside a complete stage inventory; omitted inventory
+fields fail validation. Fine-cut direction, cleanup candidates, proposed
+changes, action instructions, project locators, execution handoffs, and
+write-back fields are forbidden even when nested inside observations or arrays.
+
 ### Optional content_edit fine-cut review report
 
 Keep the semantic/cut-risk section and the shared comparison inventory in one report. This report is optional follow-on planning for `content_edit` only.
