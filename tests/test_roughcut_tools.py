@@ -35,6 +35,54 @@ from roughcut_tools.workflow import run_fixed_workflow
 
 
 class RoughcutToolTests(unittest.TestCase):
+    def test_pause_threshold_only_generates_unclassified_review_candidates(self):
+        report = detect_pause_candidates({"pauses": [
+            {"start_us": 0, "end_us": 99},
+            {"start_us": 200, "end_us": 300, "pause_function": "breath"},
+            {"start_us": 400, "end_us": 10000},
+        ]}, {"pause_min_us": 100})
+        self.assertTrue(report["ok"], report)
+        self.assertEqual(report["data"].get("pause_function_options"), [
+            "hesitation", "sentence_boundary", "speaker_handoff", "topic_shift",
+            "emphasis", "emotional_beat", "breath", "failed_take_gap", "edit_damage",
+        ])
+        rows = report["data"]["candidates"]
+        self.assertEqual(len(rows), 2)
+        self.assertEqual([r.get("duration_us") for r in rows], [100, 9600])
+        for row in rows:
+            self.assertEqual(row["action"], "review")
+            self.assertEqual(row.get("pause_function"), "unavailable")
+            self.assertIs(row.get("contextual_review_required"), True)
+            self.assertIs(row.get("candidate_only"), True)
+            self.assertEqual(row.get("provenance"), "script_generated")
+            self.assertEqual(row.get("human_listening"), "pending")
+
+    def test_pause_config_cannot_inject_automatic_actions(self):
+        for config in ({"action": "delete"}, {"automatic_action": "join"},
+                       {"metadata": {"auto_delete": True}}):
+            report = detect_pause_candidates({"pauses": [{"start_us": 0, "end_us": 200000}]}, config)
+            self.assertFalse(report["ok"], report)
+            self.assertNotIn("delete", json.dumps(report.get("data")))
+            self.assertNotIn("join", json.dumps(report.get("data")))
+
+    def test_pause_settings_validated_before_reading_media(self):
+        for config in ({"pause_min_us": "invalid"}, {"pause_min_us": True},
+                       {"noise_db": "delete"}, {"noise_db": {"action": "join"}}):
+            report = detect_pause_candidates("missing.wav", config)
+            self.assertFalse(report["ok"])
+            self.assertTrue(report["errors"], report)
+            self.assertFalse(report["input_errors"], report)
+
+    def test_pause_scan_accepts_shared_waveform_settings_without_echoing_them(self):
+        report = detect_pause_candidates({"pauses": [{"start_us": 0, "end_us": 100}]}, {
+            "pause_min_us": 100, "pause_cap_us": 200, "edge_window_us": 300,
+            "tolerance_us": 20, "hop_us": 10, "window_us": 25,
+            "auto_snap_within_tolerance": False,
+        })
+        self.assertTrue(report["ok"], report)
+        self.assertEqual(report["data"]["config"], {"pause_min_us": 100})
+        self.assertEqual(report["data"]["candidates"][0]["action"], "review")
+
     def test_material_audit_blocks_missing_evidence(self):
         report = audit_material_completeness({"video": "missing" + "." + "mp4"})
         self.assertFalse(report["ok"])

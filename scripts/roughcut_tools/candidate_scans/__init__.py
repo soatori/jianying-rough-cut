@@ -15,6 +15,11 @@ from typing import Any
 
 from ..result import result
 
+PAUSE_FUNCTIONS = (
+    "hesitation", "sentence_boundary", "speaker_handoff", "topic_shift",
+    "emphasis", "emotional_beat", "breath", "failed_take_gap", "edit_damage",
+)
+
 
 def _units(playback: Any) -> list[dict[str, Any]] | None:
     if isinstance(playback, dict):
@@ -146,6 +151,24 @@ def _audio_pauses_from_file(path: str, config: dict[str, Any]) -> tuple[list[dic
 
 def detect_pause_candidates(audio: Any, config: Any = None) -> dict[str, Any]:
     config = config if isinstance(config, dict) else {}
+    # Only detector settings may be echoed. Unknown metadata could carry action
+    # instructions and must not become part of a candidate report.
+    detector_fields = {"pause_min_us", "noise_db"}
+    shared_waveform_fields = {
+        "pause_cap_us", "edge_window_us", "tolerance_us", "hop_us", "window_us",
+        "auto_snap_within_tolerance",
+    }
+    if set(config) - detector_fields - shared_waveform_fields:
+        return result("pause_candidates", errors=["pause config accepts detector settings only"])
+    # Workflow bundles share config with waveform alignment. These settings
+    # have no authority here and are not echoed as candidate instructions.
+    config = {key: value for key, value in config.items() if key in detector_fields}
+    minimum = config.get("pause_min_us", 120000)
+    if not isinstance(minimum, int) or isinstance(minimum, bool) or minimum < 0:
+        return result("pause_candidates", errors=["pause_min_us must be a non-negative integer"])
+    noise = config.get("noise_db", "-35dB")
+    if not isinstance(noise, str) or not re.fullmatch(r"-?\d+(?:\.\d+)?dB", noise):
+        return result("pause_candidates", errors=["noise_db must be a numeric dB string"])
     pauses = []
     source_error = None
     # A workflow may already have paid for the waveform pass.  Consume its
@@ -165,10 +188,6 @@ def detect_pause_candidates(audio: Any, config: Any = None) -> dict[str, Any]:
         return result("pause_candidates", errors=["audio evidence is required for pause scanning"])
     else:
         return result("pause_candidates", errors=["audio input must be a media path or precomputed pause list"])
-    minimum_value = config.get("pause_min_us", 120000)
-    if not isinstance(minimum_value, int) or isinstance(minimum_value, bool) or minimum_value < 0:
-        return result("pause_candidates", errors=["pause_min_us must be a non-negative integer"])
-    minimum = minimum_value
     candidates = []
     for pause in pauses if isinstance(pauses, list) else []:
         if not isinstance(pause, dict):
@@ -179,8 +198,18 @@ def detect_pause_candidates(audio: Any, config: Any = None) -> dict[str, Any]:
             source_error = source_error or "precomputed pause evidence contains invalid boundaries"
             continue
         if end - start >= minimum:
-            candidates.append({"scan": "pause", "action": "review", "start_us": start, "end_us": end, "reason": "waveform pause exceeds configured candidate threshold", "flags": ["needs_listen"]})
-    return result("pause_candidates", data={"candidates": candidates, "config": config}, errors=[source_error] if source_error else [], summary={"candidate_count": len(candidates)})
+            candidates.append({
+                "scan": "pause", "action": "review", "candidate_only": True,
+                "start_us": start, "end_us": end, "duration_us": end - start,
+                "pause_function": "unavailable", "contextual_review_required": True,
+                "provenance": "script_generated", "human_review": True,
+                "human_listening": "pending",
+                "reason": "waveform pause meets configured candidate threshold; function needs context",
+                "flags": ["needs_listen", "human_review"],
+            })
+    return result("pause_candidates", data={"candidates": candidates, "config": config,
+                  "pause_function_options": list(PAUSE_FUNCTIONS)},
+                  errors=[source_error] if source_error else [], summary={"candidate_count": len(candidates)})
 
 
 def scan_all(playback: Any, preferences: Any = None, audio: Any = None, pause_config: Any = None) -> dict[str, Any]:

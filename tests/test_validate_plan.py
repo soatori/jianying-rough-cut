@@ -10,6 +10,100 @@ from roughcut_tools.validators.decision_plan import validate_decision_plan as va
 
 
 class PlanTests(unittest.TestCase):
+    def risk(self):
+        return dict(membership_change=False, order_change=False, protected_fact_impact=False)
+
+    def test_semantic_risk_sentinels_and_escalation_flag_types(self):
+        for sentinel in ("unavailable", "not_assessed"):
+            plan = self.base()
+            plan["decisions"][0]["semantic_risk"] = dict.fromkeys(self.risk(), sentinel)
+            result = validate(plan)
+            self.assertTrue(result["ok"], result)
+            self.assertEqual(result["review_gates"]["decisions[0]"]["semantic_risk"]["order_change"], sentinel)
+        for field, value in (("escalate_to_rough_cut", "true"), ("candidate_only", 1),
+                             ("contextual_review_required", "false")):
+            plan = self.base()
+            plan["decisions"][0][field] = value
+            self.assertFalse(validate(plan)["ok"], field)
+
+    def test_unknown_pause_function_never_grants_context_review(self):
+        for sentinel in ("unavailable", "not_assessed"):
+            plan = self.base()
+            plan["decisions"][0]["pause_function"] = sentinel
+            self.assertTrue(validate(plan)["ok"])
+
+    def test_pause_function_taxonomy_requires_context_evidence(self):
+        for label in ("hesitation", "sentence_boundary", "speaker_handoff", "topic_shift",
+                      "emphasis", "emotional_beat", "breath", "failed_take_gap", "edit_damage"):
+            plan = self.base()
+            row = plan["decisions"][0]
+            row.update(pause_function=label, pause_context_evidence=["Reviewed surrounding phrasing"])
+            self.assertTrue(validate(plan)["ok"], label)
+            del row["pause_context_evidence"]
+            self.assertFalse(validate(plan)["ok"], label)
+        for label in ("long", "silence", [], {}, None):
+            plan = self.base()
+            plan["decisions"][0]["pause_function"] = label
+            self.assertFalse(validate(plan)["ok"], label)
+
+    def test_semantic_changes_require_escalation_and_human_review(self):
+        for field in ("membership_change", "order_change", "protected_fact_impact"):
+            plan = self.base()
+            row = plan["decisions"][0]
+            row["semantic_risk"] = self.risk()
+            row["semantic_risk"][field] = True
+            before = copy.deepcopy(plan)
+            result = validate(plan)
+            self.assertFalse(result["ok"], field)
+            gate = result["review_gates"]["decisions[0]"]
+            self.assertIs(gate.get("escalate_to_rough_cut"), True)
+            self.assertIs(gate["human_review"], True)
+            self.assertEqual(plan, before)
+            row.update(escalate_to_rough_cut=True, human_review=True)
+            self.assertTrue(validate(plan)["ok"], validate(plan))
+            row["pass"] = "refinement"
+            plan["workflow"]["refinement_pass"] = "draft"
+            self.assertFalse(validate(plan)["ok"])
+
+    def test_nonsemantic_cleanup_remains_fine_cut_eligible(self):
+        plan = self.base()
+        plan["workflow"]["refinement_pass"] = "draft"
+        plan["decisions"][0].update(**{
+            "pass": "refinement", "action": "shorten", "semantic_risk": self.risk(),
+            "escalate_to_rough_cut": False,
+        })
+        result = validate(plan)
+        self.assertTrue(result["ok"], result)
+        self.assertIs(result["review_gates"]["decisions[0]"].get("escalate_to_rough_cut"), False)
+
+    def test_semantic_risk_unknown_and_malformed_values(self):
+        plan = self.base()
+        self.assertEqual(validate(plan)["review_gates"]["decisions[0]"].get("semantic_risk"), {
+            "membership_change": "unavailable", "order_change": "unavailable",
+            "protected_fact_impact": "unavailable",
+        })
+        for value in (None, [], {}, {"membership_change": "no"},
+                      {"membership_change": 0, "order_change": False, "protected_fact_impact": False}):
+            plan = self.base()
+            plan["decisions"][0]["semantic_risk"] = value
+            self.assertFalse(validate(plan)["ok"], value)
+
+    def test_reorder_cannot_hide_order_risk(self):
+        plan = self.base()
+        plan["decisions"][0].update(action="reorder", semantic_risk=self.risk())
+        result = validate(plan)
+        self.assertFalse(result["ok"])
+        self.assertIs(result["review_gates"]["decisions[0]"].get("escalate_to_rough_cut"), True)
+
+    def test_automatic_actions_rejected_but_reviewed_plans_remain_supported(self):
+        for update in ({"automatic_action": "delete"}, {"auto_join": True},
+                       {"candidate_only": True, "action": "delete"},
+                       {"provenance": "script_generated", "action": "join"},
+                       {"metadata": {"auto_delete": True}}):
+            plan = self.base()
+            plan["decisions"][0].update(update)
+            self.assertFalse(validate(plan)["ok"], update)
+
     def base(self):
         return {
             "version": 1,

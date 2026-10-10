@@ -91,7 +91,7 @@ Run steps 4-7 only in `content_edit` after explicit user direction. Never contin
 
 These planning rules apply only to content_edit. stage_comparison may report existing pause evidence but must not propose pause changes.
 
-- Classify pauses by function: hesitation, sentence boundary, speaker handoff, topic shift, emphasis, emotional beat, breath, failed-take gap, or edit damage.
+- Classify pauses by function using exactly `hesitation`, `sentence_boundary`, `speaker_handoff`, `topic_shift`, `emphasis`, `emotional_beat`, `breath`, `failed_take_gap`, or `edit_damage`, with surrounding-context evidence. Function is separate from duration; missing context means `unavailable`.
 - Intermediate pause work records and proposes candidates; it does not authorize destructive pause changes.
 - A destructive pause change requires waveform localization plus a recorded human `human_listening` verdict.
 - Default to local compression rather than removal. Preserve enough room for articulation, speaker handoff, topic changes, contrast, and emphasis.
@@ -104,6 +104,24 @@ These planning rules apply only to content_edit. stage_comparison may report exi
 Protected facts include names, numbers, units, conditions, negations, comparisons, causes, qualifications, relationships, and technical claims.
 
 Escalate a fine-cut change to rough-cut review whenever semantic-unit membership or order changes meaning, support, context, Q&A integrity, or any protected fact/relationship. Only nonsemantic local delivery cleanup remains fine-cut work.
+
+Record this assessment in decision `semantic_risk`: `membership_change`,
+`order_change`, and `protected_fact_impact` each use a boolean, `unavailable`,
+or `not_assessed`. Any membership/order change requires escalation; do not wait
+for proof that harm occurred. Protected-fact impact also escalates. A row with
+any `true` must set `escalate_to_rough_cut: true`, `human_review: true`, and
+`pass: content`; reopen the content workflow as `draft` for review. An explicit
+`reorder` cannot suppress order risk with a false or omitted assessment.
+All-false local cleanup may stay in refinement after the stable-content gate;
+unavailable or out-of-scope values are never evidence of semantic safety.
+
+The validator returns effective risk/escalation in each decision's `review_gates`
+entry and rejects missing flags or semantic changes left in refinement. It does
+not infer semantic meaning, rewrite the plan, or open projects. Candidates keep
+`action: review`; candidate-only and script-generated records cannot carry
+destructive actions. `automatic_action`, `automatic_delete`, `automatic_join`,
+`auto_delete`, and `auto_join` fields are rejected even when nested. These
+contracts do not authorize execution or clear pending human listening.
 
 ## Required reports
 

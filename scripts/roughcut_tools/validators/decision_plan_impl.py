@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from ..candidate_scans import PAUSE_FUNCTIONS
 from .review_gates import collect_review_gates
 
 ACTIONS = {"keep", "delete", "shorten", "reorder", "join", "review"}
@@ -16,6 +17,7 @@ REVIEW_FLAGS = {"needs_listen", "needs_context", "low_confidence", "human_review
 REVIEW_REQUIRED_FLAGS = {"needs_context", "human_review", "low_confidence"}
 REJECTED_FIELDS = {"execution_handoff", "keep_blocks"}
 APPLICATION_FIELDS = {
+    "automatic_action", "automatic_delete", "automatic_join", "auto_delete", "auto_join",
     "draft_path", "timeline", "timeline_id", "track_id", "track_type", "segment_id", "material_id",
     "replica_paths", "replica_manifest", "encryption", "json_path", "target_locator", "source_locator",
     "write", "write_back", "apply", "execution", "clone", "project_path", "timeline_path",
@@ -32,6 +34,53 @@ BOUNDARY_BASES = {
     "derived", "unknown",
 }
 BOUNDARY_PRECISION = {"exact", "approximate"}
+SEMANTIC_RISK_FIELDS = ("membership_change", "order_change", "protected_fact_impact")
+
+
+def _validate_semantic_risk(item: dict[str, Any], prefix: str,
+                            gate: dict[str, Any], errors: list[str]) -> None:
+    supplied = item.get("semantic_risk")
+    risk = {field: "unavailable" for field in SEMANTIC_RISK_FIELDS}
+    if "semantic_risk" in item:
+        if not isinstance(supplied, dict):
+            errors.append(prefix + ".semantic_risk must be an object")
+        else:
+            if set(supplied) - set(SEMANTIC_RISK_FIELDS):
+                errors.append(prefix + ".semantic_risk contains unknown fields")
+            for field in SEMANTIC_RISK_FIELDS:
+                value = supplied.get(field)
+                if not (isinstance(value, bool) or value in ("unavailable", "not_assessed")):
+                    errors.append(prefix + f".semantic_risk.{field} requires boolean, unavailable or not_assessed")
+                else:
+                    risk[field] = value
+    # Reorder is explicit structural evidence, not a language-model inference.
+    if item.get("action") == "reorder":
+        risk["order_change"] = True
+    semantic_change = any(value is True for value in risk.values())
+    if "escalate_to_rough_cut" in item and not isinstance(item["escalate_to_rough_cut"], bool):
+        errors.append(prefix + ".escalate_to_rough_cut must be boolean")
+    gate["semantic_risk"] = risk
+    gate["escalate_to_rough_cut"] = semantic_change or item.get("escalate_to_rough_cut") is True
+    if gate["escalate_to_rough_cut"]:
+        gate["human_review"] = True
+        if item.get("escalate_to_rough_cut") is not True or item.get("human_review") is not True:
+            errors.append(prefix + " requires escalate_to_rough_cut=true and human_review=true")
+        if item.get("pass") == "refinement":
+            errors.append(prefix + " must return to the content pass for rough-cut review")
+    if "pause_function" in item:
+        function = item["pause_function"]
+        if function not in (*PAUSE_FUNCTIONS, "unavailable", "not_assessed"):
+            errors.append(prefix + ".pause_function is invalid")
+        elif function in PAUSE_FUNCTIONS:
+            _validate_string_array(item.get("pause_context_evidence"),
+                                   prefix + ".pause_context_evidence", errors, require_nonempty=True)
+    for field in ("candidate_only", "contextual_review_required"):
+        if field in item and not isinstance(item[field], bool):
+            errors.append(prefix + f".{field} must be boolean")
+    if item.get("action") in tuple(DESTRUCTIVE_ACTIONS) and (
+        item.get("candidate_only") is True or item.get("provenance") == "script_generated"
+    ):
+        errors.append(prefix + " candidate/script output cannot authorize a destructive action")
 
 
 def _is_number(value: Any) -> bool:
@@ -339,6 +388,7 @@ def validate(plan: Any) -> dict[str, Any]:
         if not isinstance(item, dict):
             errors.append(prefix + " must be an object")
             continue
+        _validate_semantic_risk(item, prefix, review_gates[prefix], errors)
         decision_id = item.get("id")
         if not _nonempty_string(decision_id):
             errors.append(prefix + ".id is required")

@@ -6,9 +6,9 @@ Precedence of judgment sources: **user preference > user case-law > general case
 
 ## The five scans
 
-1. **Repetition.** Inter-sentence repeats (same idea twice → delete the earlier) and intra-sentence repeats (delete only the leading duplicate fragment, keep the complete tail). Most objective: two near-identical adjacent attempts. Whole-sentence and divergent-retake repeats are high risk → keep in the repeated-attempt rollup (see below).
-2. **False starts and self-corrections.** A fragment clearly abandoned mid-way, or a re-said line that restarts the same thought. Delete the abandoned lead-in, keep the complete version. Preserve one natural connector when several restarts repeat the same lead-in.
-3. **Misspoken retakes (wrong number / wrong name).** A wrong fact or proper noun that the speaker later restates correctly. Delete the wrong attempt, keep the correct one. Default is keep-the-later-correct-version. Note: a name *misheard by ASR but said once correctly* is **not** this case — it is a correction-gate item ([transcript-correction-gate.md](transcript-correction-gate.md)), never a deletion.
+1. **Repetition.** Inter-sentence and intra-sentence repeats are candidates for contextual review. Near-identical adjacent attempts may still add information; duration or text similarity cannot choose a deletion. Whole-sentence and divergent-retake repeats are high risk: keep them in the repeated-attempt rollup (see below).
+2. **False starts and self-corrections.** A fragment apparently abandoned mid-way, or a re-said line that restarts the same thought, is a candidate. Check the complete version and preserve natural connectors before planning a change.
+3. **Misspoken retakes (wrong number / wrong name).** A wrong fact or proper noun that the speaker later restates correctly requires protected-fact review before any content decision. A name *misheard by ASR but said once correctly* is a correction-gate item ([transcript-correction-gate.md](transcript-correction-gate.md)), never a deletion.
 4. **English stutters.** Repeated word-initials, letters, or syllables in English tokens (do not match only Chinese). Cut at word level only when consonant/vowel boundaries and prosody permit a clean splice.
 5. **Fillers and discourse markers.** The most subjective; tune density and tolerance to the preference file. A single natural particle (e.g. "呢", "那个", "well") is conservatively kept — deleting it makes delivery feel fake. Only a run of two-plus meaningless particles is a group low-risk candidate.
 
@@ -27,13 +27,40 @@ When several attempts each add independent information, that is not repetition �
 
 ## Pass separation and the two-state rule
 
-Do not mix uncertain micro-cleanup into Pass 1. Keep content structure auditable without dozens of word-level cuts. Pass 2 may be aggressive, but every kept candidate is already self-verified; unresolved joins stay `review` rather than becoming a "suggested delete". A cut is committed or dropped or marked `review` — never a deferred third state.
+Keep content structure auditable without dozens of word-level cuts. Pass 2 owns nonsemantic local delivery cleanup. Any change to semantic-unit membership, semantic order, or protected facts returns to rough-cut review, even when the physical edit is tiny. Unresolved candidates and joins stay `review`; neither a detector nor agent self-verification clears human listening.
+
+## Pause candidates and semantic risk
+
+Pause review follows the five scans; it is not another text-deletion rule.
+The exact functional labels are `hesitation`, `sentence_boundary`,
+`speaker_handoff`, `topic_shift`, `emphasis`, `emotional_beat`, `breath`,
+`failed_take_gap`, and `edit_damage`. See [audio-boundaries.md](audio-boundaries.md)
+for their contextual meanings and candidate fields. Pause length and function
+are separate: no duration threshold can classify a pause or choose a cut.
+
+Decision records may supply `semantic_risk` with `membership_change`,
+`order_change`, and `protected_fact_impact`. Each field is a boolean, or
+`unavailable` when required evidence is missing, or `not_assessed` when outside
+scope. If supplied, include all three; omission is not a negative assessment.
+Any `true` requires `escalate_to_rough_cut: true`, `human_review: true`, and
+`pass: content`. An explicit `reorder` also establishes order risk. Review the
+semantic units and reopen `content_pass: draft` before further fine-cut work.
+All three `false` leaves nonsemantic local cleanup eligible for refinement,
+subject to stable content, boundary evidence, and the existing listening gates.
+Unknown risk never proves a change nonsemantic.
+
+The decision validator returns effective risk and escalation under
+`review_gates["decisions[index]"]`, without changing the input. Missing risk is
+reported as `unavailable`. It rejects missing escalation flags, semantic changes
+left in refinement, and structured automatic-action instructions. Candidate-only
+or `script_generated` records cannot carry destructive actions. A reviewed
+content plan may still state a proposed action; validation never executes it.
 
 ## Summary and self-read
 
 After the five scans, merge into:
 
-- the **refinement decision table** (one row per candidate: range, scan type, "delete →", "remaining reads as", risk, basis); and
+- the **refinement decision table** (one row per candidate: range, scan type, review status, proposed retained reading, semantic risk, evidence); and
 - the **repeated-attempt rollup** (which line, how many times, which kept, which removed, risk) — because a per-word table cannot show take counts, which is exactly what a human most wants to check. See [content-analysis.md](content-analysis.md).
 
-Then read the post-cut text once more in playback order and revoke any line that no longer reads through. Risk only changes how hard you verify; it never changes the output into a "needs approval" placeholder.
+Then read the proposed retained text once more in playback order and revoke any line that no longer reads through. Semantic risk changes review ownership; unresolved evidence remains reviewable rather than becoming an automatic delete or join instruction.
