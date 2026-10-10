@@ -489,6 +489,33 @@ class RoughcutToolTests(unittest.TestCase):
         self.assertEqual(report["data"]["evidence_status"]["audio"], "unavailable")
         self.assertNotIn("subtitle_alignment", report["data"]["stages"])
 
+    def test_workflow_failed_waveform_blocks_pause_scan_but_preserves_text_scans(self):
+        report = run_fixed_workflow({
+            "subtitles": [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}],
+            "playback_map": {"mapping_status": "verified", "units": [
+                {"id": "first", "text": "repeat", "start_us": 100, "end_us": 200},
+                {"id": "second", "text": "repeat", "start_us": 200, "end_us": 300},
+            ]},
+            "audio": {"pauses": []},
+        })
+        self.assertFalse(report["ok"])
+        stages = report["data"]["stages"]
+        self.assertFalse(stages["waveform_evidence"]["ok"])
+        scans = stages["candidate_scans"]
+        self.assertTrue(scans["ok"], scans)
+        self.assertEqual(scans["data"]["pause_scan_status"], "not_executed")
+        self.assertEqual(len(scans["data"]["scans"]), 5)
+        self.assertTrue(all(scan["ok"] for scan in scans["data"]["scans"]))
+        self.assertTrue(any(candidate["scan"] == "repetition"
+                            for candidate in scans["data"]["candidates"]))
+        self.assertEqual(report["data"]["blocked_work"], [
+            "candidate_scans.pause_scan", "subtitle_alignment", "waveform_evidence",
+        ])
+        self.assertEqual(report["summary"]["blocked_stage_count"], 3)
+        self.assertEqual(report["summary"]["waveform_passes"], 0)
+        self.assertEqual(report["summary"]["gate_counts"]["cleared"], 0)
+        self.assertNotIn("subtitle_alignment", stages)
+
     def test_workflow_summary_uses_effective_subtitle_input_for_generation_coverage(self):
         report = run_fixed_workflow({
             "subtitles": [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}],

@@ -233,10 +233,15 @@ def run_fixed_workflow(bundle: Any) -> dict[str, Any]:
         required = {"waveform_evidence", "candidate_scans", "subtitle_alignment"}
         if generation_requested or subtitle_mode == "generate":
             required.add("subtitle_generation")
-        payload["blocked_work"] = sorted(
+        blocked_work = {
             name for name in required | set(stages)
             if not stages.get(name, {}).get("ok")
-        )
+        }
+        scan_data = stages.get("candidate_scans", {}).get("data") or {}
+        if scan_data.get("pause_scan_status") == "not_executed":
+            # Text scans can succeed while their audio-dependent substage is blocked.
+            blocked_work.add("candidate_scans.pause_scan")
+        payload["blocked_work"] = sorted(blocked_work)
         return result(
             "roughcut_workflow", data=payload, errors=errors, input_errors=input_errors,
             warnings=warnings, summary=_workflow_summary(payload),

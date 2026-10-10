@@ -51,6 +51,14 @@ audio without a content mapping or transcript. This permitted partial path does
 not establish that blocked content work passed. Out-of-scope transcript evidence
 is `not_assessed`; missing required evidence remains `unavailable`.
 
+When waveform extraction fails but a usable playback map permits text scans,
+`candidate_scans` may succeed with `pause_scan_status=not_executed`. In this
+partial result, `data.blocked_work` explicitly includes
+`candidate_scans.pause_scan`, counted once in `blocked_stage_count`, alongside
+blocked waveform extraction and subtitle alignment. Successful text-scan
+reports and their candidates remain available; the aggregate candidate-stage
+success does not imply that the audio-dependent pause scan ran.
+
 Preparation does not set `content_pass` or `subtitle_alignment` to `stable` or
 `approved`, clear `human_review`, or authorize a project write. Semantic
 membership/order or protected-fact changes reopen rough-cut review and
