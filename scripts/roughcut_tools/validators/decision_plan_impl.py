@@ -61,6 +61,12 @@ def _validate_semantic_risk(item: dict[str, Any], prefix: str,
         errors.append(prefix + ".escalate_to_rough_cut must be boolean")
     gate["semantic_risk"] = risk
     gate["escalate_to_rough_cut"] = semantic_change or item.get("escalate_to_rough_cut") is True
+    if (item.get("pass") == "refinement"
+            and item.get("action") in tuple(DESTRUCTIVE_ACTIONS)
+            and not all(value is False for value in risk.values())):
+        gate["human_review"] = True
+        errors.append(prefix + ".semantic_risk must be assessed as all false for destructive refinement; "
+                      "use a review-only action until assessed")
     if gate["escalate_to_rough_cut"]:
         gate["human_review"] = True
         if item.get("escalate_to_rough_cut") is not True or item.get("human_review") is not True:
@@ -89,6 +95,19 @@ def _is_number(value: Any) -> bool:
 
 def _nonempty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _semantic_review_approved(item: dict[str, Any]) -> bool:
+    """Only a same-decision human interpretation verdict resolves escalation."""
+    verdict = item.get("human_verdict")
+    return (
+        isinstance(verdict, dict)
+        and verdict.get("actor") == "human"
+        and verdict.get("verdict") == "approved"
+        and verdict.get("scope") == "interpretation"
+        and _nonempty_string(verdict.get("reviewer"))
+        and _nonempty_string(verdict.get("evidence"))
+    )
 
 
 def _find_application_fields(value: Any, path: str, errors: list[str]) -> None:
@@ -403,6 +422,16 @@ def validate(plan: Any) -> dict[str, Any]:
         action_valid = isinstance(action, str) and action in ACTIONS
         if not action_valid:
             errors.append(prefix + ".action is invalid")
+        if (action_valid and action in DESTRUCTIVE_ACTIONS
+                and review_gates[prefix]["escalate_to_rough_cut"]
+                and not _semantic_review_approved(item)):
+            if content_phase_status != "draft":
+                errors.append(prefix + " unresolved semantic escalation requires workflow.content_pass=draft")
+            if refinement_phase_status != "not_started":
+                errors.append(prefix + " unresolved semantic escalation requires workflow.refinement_pass=not_started")
+            if alignment_phase_status not in {"not_started", "draft"}:
+                errors.append(prefix + " unresolved semantic escalation requires workflow.subtitle_alignment "
+                              "to be not_started or draft")
         if item.get("confidence") not in CONFIDENCE:
             errors.append(prefix + ".confidence is invalid")
         if not _nonempty_string(item.get("summary")):

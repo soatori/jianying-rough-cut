@@ -13,6 +13,133 @@ class PlanTests(unittest.TestCase):
     def risk(self):
         return dict(membership_change=False, order_change=False, protected_fact_impact=False)
 
+    def escalated_plan(self):
+        plan = self.base()
+        plan["workflow"].update(content_pass="approved", refinement_pass="approved",
+                                subtitle_alignment="approved")
+        plan["decisions"][0].update(action="reorder", semantic_risk=self.risk(),
+                                    escalate_to_rough_cut=True, human_review=True)
+        return plan
+
+    def semantic_verdict(self, **updates):
+        verdict = dict(actor="human", reviewer="human reviewer", verdict="approved",
+                       scope="interpretation", evidence="Recorded semantic review verdict")
+        verdict.update(updates)
+        return verdict
+
+    def test_final_fix_unresolved_reorder_blocks_mixed_approved_handoff(self):
+        plan = self.escalated_plan()
+        cleanup = copy.deepcopy(self.base()["decisions"][0])
+        cleanup.update(id="D2", action="shorten", semantic_risk=self.risk())
+        cleanup["pass"] = "refinement"
+        plan["decisions"].append(cleanup)
+        before = copy.deepcopy(plan)
+        result = validate(plan)
+        self.assertFalse(result["ok"])
+        for field in ("content_pass", "refinement_pass", "subtitle_alignment"):
+            self.assertTrue(any("workflow." + field in e for e in result["errors"]), result)
+        self.assertEqual(plan, before)
+
+    def test_final_fix_unresolved_semantic_changes_require_content_draft(self):
+        for field in self.risk():
+            for status in ("stable", "approved"):
+                with self.subTest(field=field, status=status):
+                    plan = self.escalated_plan()
+                    plan["workflow"] = dict(content_pass=status, refinement_pass="not_started")
+                    row = plan["decisions"][0]
+                    row["action"] = "delete"
+                    row["semantic_risk"][field] = True
+                    result = validate(plan)
+                    self.assertFalse(result["ok"])
+                    self.assertTrue(any("workflow.content_pass" in e for e in result["errors"]))
+
+    def test_final_fix_reopened_content_review_is_valid(self):
+        for alignment in ("not_started", "draft"):
+            plan = self.escalated_plan()
+            plan["workflow"] = dict(content_pass="draft", refinement_pass="not_started",
+                                    subtitle_alignment=alignment)
+            result = validate(plan)
+            self.assertTrue(result["ok"], result)
+            self.assertIs(result["review_gates"]["decisions[0]"]["human_review"], True)
+
+    def test_final_fix_same_row_semantic_approval_allows_downstream_handoff(self):
+        plan = self.escalated_plan()
+        plan["decisions"][0]["human_verdict"] = self.semantic_verdict()
+        cleanup = copy.deepcopy(self.base()["decisions"][0])
+        cleanup.update(id="D2", action="shorten", semantic_risk=self.risk())
+        cleanup["pass"] = "refinement"
+        plan["decisions"].append(cleanup)
+        result = validate(plan)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["review_gates"]["decisions[0]"]["human_listening"], "pending")
+
+    def test_final_fix_other_verdicts_do_not_resolve_semantic_escalation(self):
+        for updates in ({"scope": "evidence"}, {"scope": "human_listening"},
+                        {"verdict": "rejected"}, {"actor": "agent"}, {"reviewer": ""},
+                        {"evidence": ""}):
+            with self.subTest(updates=updates):
+                plan = self.escalated_plan()
+                plan["decisions"][0]["human_verdict"] = self.semantic_verdict(**updates)
+                result = validate(plan)
+                self.assertFalse(result["ok"])
+                self.assertTrue(any("workflow.content_pass" in e for e in result["errors"]), result)
+        for location in ("root", "workflow", "other_decision"):
+            with self.subTest(location=location):
+                plan = self.escalated_plan()
+                other = copy.deepcopy(plan["decisions"][0])
+                other["id"] = "D2"
+                plan["decisions"].append(other)
+                target = {"root": plan, "workflow": plan["workflow"], "other_decision": other}[location]
+                target["human_verdict"] = self.semantic_verdict()
+                self.assertFalse(validate(plan)["ok"])
+
+    def test_final_fix_destructive_refinement_requires_assessed_nonsemantic_risk(self):
+        risks = [None, dict.fromkeys(self.risk(), "unavailable"),
+                 dict.fromkeys(self.risk(), "not_assessed")]
+        for field in self.risk():
+            for sentinel in ("unavailable", "not_assessed"):
+                risks.append(dict(self.risk(), **{field: sentinel}))
+        for action in ("delete", "shorten", "join"):
+            for risk in risks:
+                with self.subTest(action=action, risk=risk):
+                    plan = self.base()
+                    plan["workflow"].update(refinement_pass="approved", subtitle_alignment="approved")
+                    row = plan["decisions"][0]
+                    row.update(action=action, escalate_to_rough_cut=False, human_review=False)
+                    row["pass"] = "refinement"
+                    if risk is not None:
+                        row["semantic_risk"] = risk
+                    before = copy.deepcopy(plan)
+                    result = validate(plan)
+                    self.assertFalse(result["ok"])
+                    self.assertTrue(any("semantic_risk" in e for e in result["errors"]), result)
+                    self.assertIs(result["review_gates"]["decisions[0]"]["human_review"], True)
+                    self.assertEqual(plan, before)
+
+    def test_final_fix_verdict_cannot_substitute_for_refinement_assessment(self):
+        plan = self.base()
+        plan["workflow"]["refinement_pass"] = "draft"
+        plan["decisions"][0].update(action="shorten", human_review=True,
+                                    human_verdict=self.semantic_verdict(), provenance="human_verified")
+        plan["decisions"][0]["pass"] = "refinement"
+        self.assertFalse(validate(plan)["ok"])
+
+    def test_final_fix_non_destructive_unknown_risk_remains_compatible(self):
+        for action in ("keep", "review"):
+            for risk in (None, dict.fromkeys(self.risk(), "unavailable"),
+                         dict.fromkeys(self.risk(), "not_assessed")):
+                with self.subTest(action=action, risk=risk):
+                    plan = self.base()
+                    plan["workflow"].update(refinement_pass="approved", subtitle_alignment="approved")
+                    row = plan["decisions"][0]
+                    row.update(action=action, human_review=False)
+                    row["pass"] = "refinement"
+                    if risk is not None:
+                        row["semantic_risk"] = risk
+                    result = validate(plan)
+                    self.assertTrue(result["ok"], result)
+                    self.assertIs(result["review_gates"]["decisions[0]"]["human_review"], False)
+
     def test_semantic_risk_sentinels_and_escalation_flag_types(self):
         for sentinel in ("unavailable", "not_assessed"):
             plan = self.base()

@@ -175,3 +175,32 @@ Invalid claims fail validation; unsupported provenance or unsubstantiated
 `human_verified` is reported effectively as `unavailable`, and unsubstantiated
 listening verification remains `pending`. A successful schema check alone is
 not completed human review.
+
+## Semantic escalation and refinement handoff
+
+`semantic_risk` records `membership_change`, `order_change`, and
+`protected_fact_impact` as booleans, `unavailable`, or `not_assessed`.
+Omitted risk evidence remains `unavailable`. A destructive refinement decision
+requires all three fields to be explicitly assessed as `false`. Missing,
+unavailable, or out-of-scope assessment cannot authorize destructive refinement,
+even with a human verdict; retain an `action: review` record until assessment is
+available. Validation marks blocked destructive refinement for human review.
+Non-destructive `keep` and `review` records remain compatible with omitted or
+unknown risk evidence.
+
+Semantic changes require `escalate_to_rough_cut: true`, `human_review: true`,
+and the content pass. A `reorder` action always implies `order_change: true`.
+An unresolved destructive escalation requires `workflow.content_pass: draft`,
+`workflow.refinement_pass: not_started`, and `workflow.subtitle_alignment` set
+to `not_started` or `draft`. Other refinement decisions cannot remain valid
+while the content pass is reopened. Validation rejects stale workflow states;
+it does not mutate the submitted plan or automatically approve any stage.
+
+Only an approved, structurally valid `human_verdict` with `scope: interpretation`
+on the escalated decision itself resolves this workflow restriction. Evidence
+or listening verdicts, rejected verdicts, parent approvals, and approvals on
+other decisions do not resolve it. Every destructive escalation must be resolved
+before downstream approval can validate. Resolution leaves the semantic decision
+in the content pass and does not clear pending human listening. These extra
+workflow restrictions apply to destructive proposals; non-destructive records
+retain their existing validation behavior.
