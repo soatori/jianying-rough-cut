@@ -11,7 +11,7 @@ Use this skill to plan speech-led content edits and subtitle alignment from sour
 
 - Owns transcript correction, source completeness, content structure, speaker/Q&A relationships, speech cleanup, subtitle proofreading/alignment plans, comparison review, and post-review learning.
 - jianying-editor owns project probing, timeline reads/writes, cloning, and execution of approved ranges. This skill does not create, clone, or name timelines.
-- jianying-packaging owns visual emphasis, flower text, motion, transitions, overlays, and sound effects. It starts after content and subtitle alignment are stable or approved.
+- jianying-packaging owns visual emphasis, flower text, motion, transitions, overlays, and sound effects. Read-only packaging analysis may run at any state; preparing a packaging plan requires `content_pass: stable|approved` and `subtitle_alignment: approved`. Staging and final writes use the stricter gates in [references/workflow-state.md](references/workflow-state.md).
 - Keep project-specific copy, names, timings, IDs, assets, and manual choices in external case references, not in this reusable skill.
 
 ## Modes
@@ -26,12 +26,31 @@ Use this skill to plan speech-led content edits and subtitle alignment from sour
 For **content_edit**, choose the entry by source evidence:
 
 1. Use **copy-first** only when an accurate written script is available and the speaker recorded to it. Otherwise use **discovery** for interviews, conversations, or unscripted material. Read the applicable entry reference below.
-2. Audit source completeness and limitations. Correct confirmed transcript errors and record unresolved terms before making cut decisions.
-3. Orient to the whole source: identify its thesis, audience, domain, speakers, outline, dependencies, and protected facts.
-4. Produce the content rough-cut plan from complete semantic units. Audit it against the full source for missing context, altered claims, broken Q&A, lost technical conditions, and logic/order problems.
-5. Record `content_pass: draft` after evidence collection. Set it to `stable` only after the semantic self-audit, and to `approved` only after explicit user approval.
-6. Once stable or approved, refine delivery: review fillers, false starts, repetitions, pauses, and joins in context. Have a human audition proposed changes where possible and record the verdict. Agent playback or waveform analysis does not clear `human_listening`; without a person's recorded verdict, keep it pending.
-7. Proofread current subtitles or generate a separate pending alignment plan from a timed transcript. After human review, record learning and stage differences without changing a draft.
+2. Audit source completeness and transcript availability. If a task needs source-to-edited mapping or generated subtitles and no timed transcript exists, stop before dependent analysis; route to an authorized compatible transcription capability or request the timed transcript.
+3. Correct confirmed transcript errors and record unresolved terms before making cut decisions.
+4. Orient to the whole source: identify its thesis, audience, domain, speakers, outline, dependencies, and protected facts.
+5. Produce the content rough-cut plan from complete semantic units. Audit it against the full source for missing context, altered claims, broken Q&A, lost technical conditions, and logic/order problems.
+6. Record `content_pass: draft` after evidence collection. Set it to `stable` only after the semantic self-audit, and to `approved` only after explicit user approval.
+7. Once stable or approved, refine delivery: review fillers, false starts, repetitions, pauses, and joins in context. Have a human audition proposed changes where possible and record the verdict. Agent playback or waveform analysis does not clear `human_listening`; without a person's recorded verdict, keep it pending.
+8. Proofread current subtitles or generate a separate pending alignment plan from a timed transcript. Existing-subtitle-only alignment does not require a transcript; generation and playback mapping do. After human review, record learning and stage differences without changing a draft.
+
+## Phase handoffs and next-step suggestions
+
+At each phase exit, report the result/state, one recommended next step, and any
+gate that is still pending. A recommendation does not approve a decision or
+authorize a draft write; stop at a human gate instead of advancing it for them.
+
+| Phase result | Next-step suggestion |
+|---|---|
+| Source and transcript evidence are ready | Continue to whole-source orientation and semantic-block planning; request missing evidence before dependent decisions. |
+| `content_pass: stable` | Continue delivery refinement when it is in scope; otherwise present the plan for user review. Set `approved` only after explicit user approval. |
+| Delivery-cleanup candidates are prepared | Have a person audition the proposed changes. Semantic or protected-fact risk returns to content review; unresolved listening stays pending. |
+| Content plan is approved | If project execution was requested and authorized, hand the plan to `jianying-editor`; otherwise deliver the plan. After execution, align subtitles from the final playback order when requested or needed for packaging. |
+| `subtitle_alignment` is pending | Request the required proofreading/listening review. If audio or edit order changes, refresh the audio evidence and rerun alignment. |
+| `subtitle_alignment: approved` | Continue to `jianying-packaging` only when packaging was requested; otherwise deliver the alignment result and stop. |
+| `stage_comparison` report is complete | Deliver the read-only report and stop. Any edit planning requires a separate `content_edit` request. |
+| `final_draft_audit` report is complete | Deliver the discrepancy report and stop. If follow-up is requested, route content wording to `content_edit` and timing/alignment issues to `subtitle_alignment`. |
+| Required evidence is missing or blocked | Name the missing evidence, request it, and hold only the dependent phase. |
 
 ### Multi-stage comparison conversations
 

@@ -37,6 +37,10 @@ until the copy-ordered cut is `stable`/`approved`
   [content-analysis.md](content-analysis.md) (重复尝试汇总) and
   [cut-case-law.md](cut-case-law.md) R1/R4.
 
+**Next step:** once every supplied clip is indexed and coverage limits are
+recorded, order the mapped units by the copy. If missing media affects the
+requested scope, report it and hold decisions that depend on it.
+
 ### 2. 按文案排序、剔除无效片段 (order by copy, drop non-content)
 
 Reconstruct copy order from the index, then classify each span:
@@ -62,6 +66,11 @@ Reconstruct copy order from the index, then classify each span:
 The copy only tells you which units *should* be present; it is never itself a
 deletion or boundary authorization.
 
+**Next step:** resolve any `needs_context` / `human_review` items before
+destructive decisions. Once the copy-ordered plan is `stable` or `approved`,
+continue to the shared refinement loop below; if approval is still pending,
+present the plan and wait at that gate.
+
 ## 汇入精剪主循环（两条粗剪入口共用）
 
 Once the 粗剪 front end is stable, continue on the shared **精剪主循环** — identical
@@ -73,8 +82,13 @@ to the discovery entry, not part of this runbook's specifics:
 2. **Subtitle → SRT** against the *edited* timeline audio, written as a
    review-pending sidecar (draft folder is fine). SKILL.md step 13 and
    [subtitle-proofreading-and-audio-alignment.md](subtitle-proofreading-and-audio-alignment.md).
-3. **Import to timeline & align** via the `jianying-editor` handoff (explicit
-   confirmation first). A range that will not resolve, a cut landing mid-word,
-   or order/sync drift is **reported** for that segment — not silently nudged.
-4. **发起审查** at the human gates, then **ask whether to proceed to
-   `jianying-packaging`**. [workflow-state.md](workflow-state.md).
+3. **Import to timeline & align** via the `jianying-editor` handoff only when
+   that operation is within the user's current request and authorization. A
+   range that will not resolve, a cut landing mid-word, or order/sync drift is
+   **reported** for that segment — not silently nudged. Do not repeat a
+   confirmation for an unchanged, already authorized operation.
+4. **发起审查** at the human gates. If packaging is within the current request,
+   continue only after its state gates pass; otherwise identify packaging as the
+   next available phase without asking again about an already stated scope.
+   Plan approval alone does not authorize a packaging write.
+   [workflow-state.md](workflow-state.md).

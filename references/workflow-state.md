@@ -14,7 +14,7 @@ The skills share these handoff states:
 
 `human_review` is a flag on affected decisions or report rows, not a workflow state.
 
-The normal gate is:
+The normal review-state progression is:
 
 ```text
 content_pass stable/approved
@@ -23,6 +23,32 @@ content_pass stable/approved
 → packaging_apply dry_run/applied/verified
 → visual_audio_review passed
 ```
+
+The diagram describes state progression. A write still has to satisfy the
+phase-specific approval and authorization gates below.
+
+## Packaging phase gates
+
+Use these gates consistently across `jianying-rough-cut`, `jianying-packaging`,
+and the `jianying-editor` handoff:
+
+| Operation | Required state | Write authorization | Next-step suggestion |
+|---|---|---|---|
+| Read-only analysis | Any state; report the current state and unresolved evidence | None; analysis must not create a clone or staging layer | Deliver the report and stop; continue only if the user requests another mode. |
+| Prepare a packaging plan | `content_pass: stable` or `approved`; `subtitle_alignment: approved` | No draft write | Validate and deliver the plan; prepare staging only when requested and its stricter gate passes. |
+| Create or update a staging timeline | `content_pass: approved`; `subtitle_alignment: approved` | The request must authorize staging for the current source and scope; use a fresh clone when no target is specified | Set `packaging_staging: reviewing`, identify the copy to open, and wait for the user's review. |
+| Apply the final package | `content_pass: approved`; `subtitle_alignment: approved`; `packaging_staging: approved`; approved final-subtitle reference; remapping `verified` or `not_required` | The request must authorize final application to the approved staging target | Read back the editor result, then reopen Jianying for visual/audio review. |
+
+`stable` means the rough-cut owner has completed a semantic self-audit; it does
+not mean the user approved the content. A structurally valid review plan may
+record `stable`, but it must not be handed to `jianying-editor` for a staging or
+final write until the write gate above is met. Plan approval alone does not
+authorize a draft mutation. An explicit request to perform a specific write is
+authorization for that unchanged scope; do not ask the user to authorize it a
+second time. Use a fresh clone when no target is specified. Ask only when the
+source, scope, explicit target constraint, or authorization is ambiguous,
+missing, or has changed. Re-read and compare the saved source and target before
+each write.
 
 If packaging discovers a semantic problem, set the packaging result to `needs_rough_cut_review` and return to the content owner. Do not silently consume the issue as a display-only change.
 

@@ -20,15 +20,25 @@ instead of inferring project clip selection inside this skill. In `auto`, missin
 explicit `generate` may omit `subtitles` or provide `subtitles: []`, but
 must block if a supplied subtitle-state object cannot be read.
 
-| Stage | Script action | Agent-required follow-up | Human gate |
-|---|---|---|---|
-| Material | `preflight` or the `workflow` bundle stage | interpret completeness limits without inventing missing evidence | confirm that missing/partial evidence is acceptable |
-| Transcript | `correct-transcript` with confirmed dictionaries | review unresolved terminology and protected facts | listen to unresolved names, numbers, models, and conditions |
-| Edited time | `playback-map` from the approved edit map | inspect semantic membership/order and mapping limits | confirm order/remap is verified |
-| Cleanup candidates | `scan --kind all` or the `workflow` bundle stage | classify pause functions and semantic risk in context | listen in context; candidates never mean delete |
-| Existing subtitles | `subtitle-align` or `workflow --subtitle-mode existing` | cross-check wording and boundary evidence | preserve current text/order/segmentation; listen to every flagged edge |
-| No subtitles | `subtitle-generate` or `workflow --subtitle-mode generate` | proofread generated units and unresolved terms | listen to generated text and every flagged edge; approve the plan and SRT |
-| Retrospective | `retrospective` | separate reusable lessons from case-specific records | record only corrections the user actually accepted |
+`playback-map` and subtitle generation require timed transcript evidence. If it
+is missing, stop those dependent stages and route to an authorized compatible
+transcription capability or request the transcript. Existing-subtitle-only
+alignment may proceed without a transcript when current subtitles and final
+edited audio are available.
+
+At each stage exit, state what completed, what remains pending, and the next
+recommended step. Do not run a dependent stage when its required evidence or
+human gate is unavailable.
+
+| Stage | Script action | Agent-required follow-up | Human gate | Next-step suggestion |
+|---|---|---|---|---|
+| Material | `preflight` or the `workflow` bundle stage | interpret completeness limits without inventing missing evidence | confirm whether missing/partial evidence is acceptable | If coverage is sufficient, continue to transcript correction; otherwise request missing media and hold affected work. |
+| Transcript correction | `correct-transcript` with confirmed dictionaries | review unresolved terminology and protected facts | listen to unresolved names, numbers, models, and conditions | Once corrections are settled or flagged, build the edited-time map and source outline. |
+| Edited time | `playback-map` from the approved edit map | inspect semantic membership/order and mapping limits | confirm order/remap is verified | When mapping is usable, run requested cleanup scans and/or subtitle alignment. |
+| Cleanup candidates | `scan --kind all` or the `workflow` bundle stage | classify pause functions and semantic risk in context | listen in context; candidates never mean delete | Keep unresolved items pending; return semantic changes to content review, otherwise carry reviewed local candidates into the refinement plan. |
+| Existing subtitles | `subtitle-align` or `workflow --subtitle-mode existing` | cross-check wording and boundary evidence | preserve current text/order/segmentation; listen to every flagged edge | After approval, package only if requested; if audio changes, refresh evidence and rerun alignment. |
+| No subtitles | `subtitle-generate` or `workflow --subtitle-mode generate` | proofread generated units and unresolved terms | listen to generated text and every flagged edge; approve the plan and SRT | After approval, package only if requested; if audio changes, refresh evidence and regenerate/re-align. |
+| Retrospective | `retrospective` | separate reusable lessons from case-specific records | record only corrections the user actually accepted | Keep accepted reusable lessons, deliver the result, and end this workflow. |
 
 ## Two subtitle modes
 
@@ -163,6 +173,10 @@ protected-fact changes return to rough-cut review. A recorded human verdict is
 required to clear `human_listening`; agent playback cannot clear it. This
 workflow does not ingest verdicts or advance review states automatically.
 
-If a saved draft must be probed, resolved, cloned, or written back, stop at
-this skill boundary and ask for explicit confirmation before involving
-`jianying-editor`.
+This skill never probes, resolves, clones, or writes a Jianying draft. When the
+requested work needs draft evidence or a project mutation, hand it to
+`jianying-editor` only when that operation is within the user's current request
+and authorization. Otherwise request the missing evidence or authorization.
+Approval of a plan alone does not authorize a project write. Do not ask again
+for an already authorized operation while its scope and target remain
+unchanged.

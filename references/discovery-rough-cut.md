@@ -34,6 +34,10 @@ The 粗剪 front end loops until the whole conversation is understood. Do not en
   ([transcript-correction-gate.md](transcript-correction-gate.md)) so a misheard
   name is fixed **before** you decide structure.
 
+**Next step:** after completeness, speaker labels, and transcript corrections
+are recorded, build the whole-conversation outline. Keep unresolved terms
+visible as review items; do not let them silently determine a cut.
+
 ### 2. 大纲：从字幕分析整理整体内容
 
 From the corrected, speaker-labelled transcript build the content orientation and
@@ -41,6 +45,9 @@ outline ([domain-and-outline.md](domain-and-outline.md)): theme and thesis,
 purpose and audience, topic modules, question→answer pairings, and protected
 facts. Preserve the source order in the outline even when a later structure may
 differ; the outline must stay traceable to transcript units.
+
+**Next step:** present the block-level editorial direction questions below;
+do not draft detailed cuts until the user has set the target shape.
 
 ### 3. 评估建议 + 发起询问（剪哪些、是否按顺序）
 
@@ -57,6 +64,9 @@ This is one up-front direction brief, **not** a per-cut confirmation — do not 
 line by line (SKILL.md decision rules). Record the answers as constraints for the
 cut plan.
 
+**Next step:** turn the recorded direction into a semantic-block cut plan. If
+the direction is still unresolved, return the open choice instead of guessing.
+
 ### 4. 剪辑计划 + 审核（可能循环）
 
 Turn the agreed direction into the Pass-1 content rough cut
@@ -71,6 +81,11 @@ feedback adjusts the plan, you re-audit against the full source, until
   order) to reach the approximate shape, **then** apply the shared refinement
   tail below to that — do not refine before the block-level rough cut is agreed.
 
+**Next step:** after the full-source audit passes, set `content_pass: stable`
+and send the plan for user review. After approval, continue to the shared
+refinement loop; if feedback changes semantic membership or order, revise the
+content plan first.
+
 → Emit the content decision plan, then continue on the 精剪主循环.
 
 ## 汇入精剪主循环（两条粗剪入口共用）
@@ -82,8 +97,13 @@ Identical to the copy-first entry, so not repeated as specifics here:
 2. **Subtitle → SRT** against the *edited* timeline audio, review-pending
    sidecar. SKILL.md step 13 and
    [subtitle-proofreading-and-audio-alignment.md](subtitle-proofreading-and-audio-alignment.md).
-3. **Import to timeline & align** via the `jianying-editor` handoff (explicit
-   confirmation first); an unresolved range, a mid-word cut, or order/sync drift
-   is **reported** for that segment, never silently nudged.
-4. **发起审查** at the human gates, then **ask whether to proceed to
-   `jianying-packaging`**. [workflow-state.md](workflow-state.md).
+3. **Import to timeline & align** via the `jianying-editor` handoff only when
+   that operation is within the user's current request and authorization; an
+   unresolved range, a mid-word cut, or order/sync drift is **reported** for
+   that segment, never silently nudged. Do not repeat a confirmation for an
+   unchanged, already authorized operation.
+4. **发起审查** at the human gates. If packaging is within the current request,
+   continue only after its state gates pass; otherwise identify packaging as the
+   next available phase without asking again about an already stated scope.
+   Plan approval alone does not authorize a packaging write.
+   [workflow-state.md](workflow-state.md).

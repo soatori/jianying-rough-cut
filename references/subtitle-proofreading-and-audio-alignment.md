@@ -10,8 +10,11 @@ This stage runs after the rough-cut content pass has been executed and before pa
 
 The rough-cut skill consumes application-independent inputs only. It does not
 read or write a Jianying project and does not call `jianying-editor`. If the
-current subtitle state must be obtained from an encrypted draft, stop at this
-boundary and request an explicit read-only project probe outside this skill.
+current subtitle state must be obtained from an encrypted draft, route the
+needed read-only probe to `jianying-editor` when draft access is within the
+user's current request. Otherwise ask for an exported subtitle state or the
+missing authorization. Do not repeat a probe request that is already
+authorized.
 
 ## Inputs and order
 
@@ -36,6 +39,19 @@ boundary and request an explicit read-only project probe outside this skill.
    execution boundary.
 
 If a later rough-cut change changes source order, source range, speed, or duration, repeat this stage. A packaging-only style change does not require full re-alignment unless it changes subtitle timing or segmentation.
+
+## Phase exits and next-step suggestions
+
+At the end of alignment, report the current status and the next action. Keep a
+pending plan pending until the required human review is recorded.
+
+| Outcome | Next-step suggestion |
+|---|---|
+| Final-order audio or subtitle state is missing/unknown | Request a fresh audio mixdown or current subtitle-state evidence; hold dependent alignment work. |
+| Existing-subtitle plan is pending | Preserve current wording/order/segmentation, then have a person listen to every flagged edge and approve the plan. |
+| Generated plan/SRT is pending | Proofread complete units and unresolved terms, listen to generated text and flagged edges, then approve the plan and SRT. |
+| `subtitle_alignment: approved` | Deliver the alignment result; continue to packaging only if requested. |
+| Audio, order, speed, source range, or duration changed | Recheck audio identity and rerun the affected alignment pass before packaging. |
 
 ## Existing-timeline anchor units, not seconds
 
@@ -105,7 +121,7 @@ generation. Both emit review-pending plans and do not write the draft.
 
 Recognize and reject these obsolete patterns; do not reintroduce them.
 
-- **Overwriting existing subtitles without asking.** A rebuild replaces the screens, wording, and breaks a human already tuned — and nothing downstream can recover them. Editing a few characters is not a rebuild: change those units in place. A full overwrite is the one operation in this stage that requires explicit confirmation first.
+- **Overwriting existing subtitles without authorization.** A rebuild replaces the screens, wording, and breaks a human already tuned — and nothing downstream can recover them. Editing a few characters is not a rebuild: change those units in place. A full overwrite requires explicit user authorization if the current request has not already authorized that exact operation; do not ask again when it has.
 - **Re-running ASR on the edited video to recover timing.** Obsolete. Post-cut time is computed from token source-times plus the kept ranges ([Anchor units, not seconds](#anchor-units-not-seconds)); a second transcription only re-hears the same speech and forces every proper noun to be re-corrected.
 - **Stitching the original subtitle cues head-to-tail along the edit list.** Those cue boundaries were cut on the original's pauses and drift after an edit. Only the per-token/semantic-unit mapping survives.
 - **Keeping ASR cue boundaries as subtitle screens.** Segment by the punctuation ladder above, not by whatever breaks the recognizer happened to emit.

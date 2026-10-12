@@ -47,6 +47,7 @@ from roughcut_tools.transcript_correction import (
     apply_dictionary_corrections,
     load_dictionary,
 )
+from roughcut_tools.transcript_import import import_ai_jian_koubo_whisperx
 from roughcut_tools.validators import (
     validate_alignment_plan,
     validate_analysis_report,
@@ -162,6 +163,8 @@ def _audio_identity_mismatches(expected: dict[str, Any] | None, actual: dict[str
 
 
 def _run(args: argparse.Namespace) -> dict[str, Any]:
+    if args.command == "import-transcript":
+        return import_ai_jian_koubo_whisperx(load_json(args.input))
     if args.command == "validate":
         if args.kind == "comparison-report":
             return validate_stage_comparison_report(unwrap_report(load_json(args.path)))
@@ -307,11 +310,17 @@ def _normalize_output_options(argv: list[str] | None) -> list[str] | None:
     index = 0
     while index < len(argv):
         token = argv[index]
-        if token in {"--format", "--out"} and index + 1 < len(argv):
+        if token == "--out" and index + 1 < len(argv):
             leading.extend((token, argv[index + 1]))
             index += 2
             continue
-        if token.startswith(("--format=", "--out=")):
+        if token == "--format" and index + 1 < len(argv):
+            value = argv[index + 1]
+            if value in {"json", "text"}:
+                leading.extend((token, value))
+                index += 2
+                continue
+        if token.startswith("--out=") or token in {"--format=json", "--format=text"}:
             leading.append(token)
             index += 1
             continue
@@ -325,6 +334,19 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--format", choices=("json", "text"), default="json")
     parser.add_argument("--out", help="write the complete report to this path")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    transcript_import = sub.add_parser(
+        "import-transcript",
+        help="convert a supported timed ASR result to the canonical transcript format",
+    )
+    transcript_import.add_argument("--input", required=True, help="AI剪口播 whisperx_result.json")
+    transcript_import.add_argument(
+        "--format",
+        dest="transcript_format",
+        choices=("ai-jian-koubo-whisperx",),
+        required=True,
+        help="source transcript format",
+    )
 
     validate = sub.add_parser("validate")
     validate_sub = validate.add_subparsers(dest="kind", required=True)
