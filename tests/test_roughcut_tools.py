@@ -17,6 +17,7 @@ if str(SCRIPT_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_ROOT))
 
 import roughcut_tools.waveform as waveform_module
+import roughcut_tools.workflow as workflow_module
 from roughcut_tool import main as roughcut_main
 from roughcut_tools.candidate_scans import detect_pause_candidates, scan_all
 from roughcut_tools.material_audit import audit_material_completeness
@@ -420,6 +421,7 @@ class RoughcutToolTests(unittest.TestCase):
 
     def test_fixed_workflow_runs_waveform_once_and_reuses_it_for_scans(self):
         bundle = {
+            "scope": "all",
             "transcript": {
                 "content_plan_id": "c1",
                 "content_plan_hash": "sha256:c1",
@@ -444,10 +446,7 @@ class RoughcutToolTests(unittest.TestCase):
                 "speed": 1,
                 "kept": True,
             }]},
-            "audio": {
-                "duration_us": 1_000_000,
-                "pauses": [{"start_us": 50_000, "end_us": 190_000}],
-            },
+            "audio": {},
             "subtitles": [{
                 "id": "cue-1",
                 "semantic_unit_id": "u1",
@@ -457,7 +456,35 @@ class RoughcutToolTests(unittest.TestCase):
             }],
             "dictionaries": [{"甲": "甲"}],
         }
-        report = run_fixed_workflow(bundle)
+        with tempfile.TemporaryDirectory() as directory:
+            audio_path = Path(directory) / "edited-audio.wav"
+            audio_path.write_bytes(b"fake audio")
+            bundle["audio"] = {"path": str(audio_path)}
+            probe = {
+                "status": "available",
+                "duration_us": 1_000_000,
+                "metadata": {"streams": [{
+                    "codec_type": "audio", "codec_name": "pcm_s16le",
+                    "sample_rate": "8000", "channels": 1,
+                }]},
+            }
+            ffmpeg_result = waveform_module.subprocess.CompletedProcess(
+                ["ffmpeg"], 0, "", "silence_start: 0.05\nsilence_end: 0.19\n"
+            )
+            with (
+                patch.object(waveform_module, "_probe_media", return_value=probe),
+                patch.object(waveform_module.shutil, "which", return_value="ffmpeg"),
+                patch.object(waveform_module.subprocess, "run", return_value=ffmpeg_result) as ffmpeg_run,
+                patch.object(
+                    workflow_module,
+                    "extract_waveform_evidence",
+                    wraps=workflow_module.extract_waveform_evidence,
+                ) as waveform,
+            ):
+                report = run_fixed_workflow(bundle)
+        waveform.assert_called_once()
+        ffmpeg_run.assert_called_once()
+        self.assertEqual(ffmpeg_run.call_args.args[0][0], "ffmpeg")
         self.assertTrue(report["ok"], report)
         self.assertEqual(report["summary"]["waveform_passes"], 1)
         self.assertEqual(report["summary"]["editor_writes"], 0)
@@ -478,6 +505,7 @@ class RoughcutToolTests(unittest.TestCase):
 
     def test_workflow_summary_counts_stage_provenance_and_pending_gates(self):
         report = run_fixed_workflow({
+            "scope": "all",
             "subtitles": [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}],
             "audio": {"duration_us": 1000, "pauses": []},
         })
@@ -487,7 +515,7 @@ class RoughcutToolTests(unittest.TestCase):
             "human_verified": 0, "unavailable": 0,
         })
         self.assertEqual(summary["stage_count"], 2)
-        self.assertEqual(summary.get("agent_required_count"), 3)
+        self.assertEqual(summary.get("agent_required_count"), 4)
         self.assertEqual(summary.get("gate_counts"), {
             "human_review": 3, "human_listening": 1, "pending": 4, "cleared": 0,
         })
@@ -502,12 +530,12 @@ class RoughcutToolTests(unittest.TestCase):
         subtitle = [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}]
         audio = {"duration_us": 1000, "pauses": []}
         cases = [
-            ({"subtitles": subtitle}, "audio", "subtitle_alignment"),
-            ({"subtitle_mode": "generate", "subtitles": [], "audio": audio},
+            ({"scope": "all", "subtitles": subtitle}, "audio", "subtitle_alignment"),
+            ({"scope": "all", "subtitle_mode": "generate", "subtitles": [], "audio": audio},
              "transcript", "subtitle_generation"),
-            ({"audio": audio}, "subtitle_state", "subtitle_alignment"),
-            ({"subtitles": subtitle, "audio": audio}, "playback_map", "candidate_scans"),
-            ({"subtitles": subtitle, "audio": audio,
+            ({"scope": "all", "audio": audio}, "subtitle_state", "subtitle_alignment"),
+            ({"scope": "all", "subtitles": subtitle, "audio": audio}, "playback_map", "candidate_scans"),
+            ({"scope": "all", "subtitles": subtitle, "audio": audio,
               "playback_map": {"mapping_status": "unresolved", "unmapped_token_ids": ["token"]}},
              "playback_map", "candidate_scans"),
         ]
@@ -523,6 +551,7 @@ class RoughcutToolTests(unittest.TestCase):
 
     def test_workflow_summary_counts_reused_waveform_only_once(self):
         report = run_fixed_workflow({
+            "scope": "all",
             "subtitles": [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}],
             "audio": {"duration_us": 1000, "pauses": []},
             "playback_map": {"mapping_status": "verified", "units": [
@@ -537,7 +566,7 @@ class RoughcutToolTests(unittest.TestCase):
         self.assertIn("subtitle_alignment", report["data"]["stages"])
 
     def test_workflow_summary_early_block_has_no_completed_provenance(self):
-        report = run_fixed_workflow({"audio": {"duration_us": 1000, "pauses": []}})
+        report = run_fixed_workflow({"scope": "all", "audio": {"duration_us": 1000, "pauses": []}})
         self.assertFalse(report["ok"])
         self.assertEqual(report["summary"]["stage_count"], 0)
         self.assertEqual(report["summary"]["waveform_passes"], 0)
@@ -548,6 +577,7 @@ class RoughcutToolTests(unittest.TestCase):
 
     def test_workflow_summary_failed_waveform_is_not_a_successful_pass(self):
         report = run_fixed_workflow({
+            "scope": "all",
             "subtitles": [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}],
             "audio": {"pauses": []},
         })
@@ -561,6 +591,7 @@ class RoughcutToolTests(unittest.TestCase):
 
     def test_workflow_failed_waveform_blocks_pause_scan_but_preserves_text_scans(self):
         report = run_fixed_workflow({
+            "scope": "all",
             "subtitles": [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}],
             "playback_map": {"mapping_status": "verified", "units": [
                 {"id": "first", "text": "repeat", "start_us": 100, "end_us": 200},
@@ -588,6 +619,7 @@ class RoughcutToolTests(unittest.TestCase):
 
     def test_workflow_summary_uses_effective_subtitle_input_for_generation_coverage(self):
         report = run_fixed_workflow({
+            "scope": "all",
             "subtitles": [{"id": "cue", "text": "text", "start_us": 100, "end_us": 200}],
             "inputs": {"subtitle_timing": []},
             "audio": {"duration_us": 1000, "pauses": []},
@@ -599,6 +631,7 @@ class RoughcutToolTests(unittest.TestCase):
     def test_fixed_workflow_media_path_runs_one_pause_detection(self):
         with tempfile.NamedTemporaryFile(suffix=".wav") as media:
             bundle = {
+                "scope": "all",
                 "transcript": {
                     "segments": [{
                         "id": "u1",
@@ -649,6 +682,7 @@ class RoughcutToolTests(unittest.TestCase):
 
     def test_fixed_workflow_generates_subtitles_from_explicit_empty_track(self):
         bundle = {
+            "scope": "subtitle_alignment",
             "subtitle_mode": "auto",
             "subtitles": [],
             "transcript": {
@@ -677,11 +711,12 @@ class RoughcutToolTests(unittest.TestCase):
         self.assertEqual(report["summary"]["waveform_passes"], 1)
 
     def test_workflow_blocks_unknown_subtitle_state_and_generate_conflict(self):
-        missing = run_fixed_workflow({"transcript": {"segments": []}})
+        missing = run_fixed_workflow({"scope": "subtitle_alignment", "transcript": {"segments": []}})
         self.assertFalse(missing["ok"])
         self.assertTrue(any("cannot determine" in error for error in missing["input_errors"]))
 
         conflict = run_fixed_workflow({
+            "scope": "subtitle_alignment",
             "subtitle_mode": "generate",
             "subtitles": [{"id": "cue", "text": "已有", "start_us": 0, "end_us": 100}],
             "transcript": {"segments": [{"id": "u1", "text": "新", "start_us": 0, "end_us": 100}]},
@@ -691,6 +726,7 @@ class RoughcutToolTests(unittest.TestCase):
 
     def test_workflow_blocks_subtitle_alignment_without_audio(self):
         existing = run_fixed_workflow({
+            "scope": "subtitle_alignment",
             "subtitle_mode": "existing",
             "subtitles": [{"id": "cue", "text": "已有", "start_us": 0, "end_us": 100}],
         })
@@ -699,6 +735,7 @@ class RoughcutToolTests(unittest.TestCase):
         self.assertTrue(any("edited-timeline audio" in error for error in existing["input_errors"]))
 
         generated = run_fixed_workflow({
+            "scope": "subtitle_alignment",
             "subtitle_mode": "generate",
             "subtitles": [],
             "transcript": {"segments": [{"id": "u1", "text": "生成", "start_us": 0, "end_us": 100}]},
@@ -708,6 +745,7 @@ class RoughcutToolTests(unittest.TestCase):
 
     def test_workflow_blocks_unreadable_subtitle_state_before_generation(self):
         report = run_fixed_workflow({
+            "scope": "subtitle_alignment",
             "subtitle_mode": "generate",
             "subtitles": {"report_type": "blocked", "data": None, "ok": False, "errors": ["encrypted"]},
             "transcript": {"segments": [{"id": "u1", "text": "生成", "start_us": 0, "end_us": 100}]},
@@ -727,7 +765,7 @@ class RoughcutToolTests(unittest.TestCase):
             subtitles = [{"id": "cue-1", "semantic_unit_id": "u1", "text": "一句", "start_us": 200_000, "end_us": 400_000}]
             evidence_path.write_text(json.dumps(evidence, ensure_ascii=False), encoding="utf-8")
             subtitles_path.write_text(json.dumps(subtitles, ensure_ascii=False), encoding="utf-8")
-            bundle_path.write_text(json.dumps({"audio": evidence, "subtitles": subtitles}, ensure_ascii=False), encoding="utf-8")
+            bundle_path.write_text(json.dumps({"scope": "subtitle_alignment", "audio": evidence, "subtitles": subtitles}, ensure_ascii=False), encoding="utf-8")
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
                 align_code = roughcut_main(["subtitle-align", "--audio", str(evidence_path), "--subtitles", str(subtitles_path)])
@@ -743,6 +781,7 @@ class RoughcutToolTests(unittest.TestCase):
             bundle_path = root / "workflow.json"
             bundle_path.write_text(
                 json.dumps({
+                    "scope": "subtitle_alignment",
                     "subtitles": [{"id": "cue-1", "text": "已有", "start_us": 100_000, "end_us": 300_000}],
                     "audio": {"duration_us": 1_000_000, "pauses": []},
                 }, ensure_ascii=False),
@@ -758,52 +797,14 @@ class RoughcutToolTests(unittest.TestCase):
             self.assertEqual(code, 0, output.getvalue())
             self.assertIn('"subtitle_mode": "existing"', output.getvalue())
 
-    def test_cli_validate_alignment_blocks_current_audio_identity_mismatch(self):
-        identity = {
-            "content_hash": "sha256:plan-audio",
-            "duration_us": 1_000_000,
-            "sample_rate": 16_000,
-            "channels": 1,
-            "codec": "pcm_s16le",
-        }
-        subtitles = [{
-            "id": "cue-1",
-            "semantic_unit_id": "u1",
-            "text": "身份不一致",
-            "start_us": 200_000,
-            "end_us": 500_000,
-        }]
-        plan_report = build_waveform_alignment_plan({
-            "duration_us": 1_000_000,
-            "pauses": [],
-            "identity": identity,
-        }, subtitles)
-        self.assertTrue(plan_report["ok"], plan_report)
-        current_identity = dict(identity)
-        current_identity["content_hash"] = "sha256:current-audio"
-        current_identity["sample_rate"] = 48_000
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            plan_path = root / "plan.json"
-            audio_path = root / "audio.json"
-            plan_path.write_text(json.dumps(plan_report, ensure_ascii=False), encoding="utf-8")
-            audio_path.write_text(json.dumps({
-                "duration_us": 1_000_000,
-                "pauses": [],
-                "identity": current_identity,
-            }, ensure_ascii=False), encoding="utf-8")
-            output = io.StringIO()
-            with contextlib.redirect_stdout(output):
-                code = roughcut_main([
-                    "validate",
-                    "alignment",
-                    str(plan_path),
-                    "--audio",
-                    str(audio_path),
-                ])
-            self.assertEqual(code, 1, output.getvalue())
-            report = json.loads(output.getvalue())
-            self.assertTrue(any("identity mismatch" in error for error in report.get("errors", [])), report)
+    def test_cli_validate_alignment_rejects_audio_option(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = roughcut_main([
+                "validate", "alignment", "unused-plan.json", "--audio", "unused-audio.wav",
+            ])
+        self.assertEqual(code, 2, output.getvalue())
+        self.assertIn("unrecognized arguments", output.getvalue())
 
     def test_cli_subtitle_generate_writes_plan_and_srt(self):
         with tempfile.TemporaryDirectory() as directory:

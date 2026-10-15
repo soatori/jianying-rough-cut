@@ -16,10 +16,12 @@ Use this skill to plan speech-led content edits and subtitle alignment from sour
 
 ## Modes
 
-- **content_edit** (default): plan the content rough cut, then delivery refinement, then subtitle alignment as requested.
+- **content_edit**: plan requested content edits. Treat `content`, `delivery`, `subtitle_alignment`, and `all` as separate workflow scopes; choose only the scope supported by the user's request. Do not infer `all` from complete inputs. If the requested scope is unclear, ask before running the scripted workflow.
 - **stage_comparison:** collect and compare supplied edit stages read-only; route source-plus-subtitle-only work to **subtitle_alignment**.
 - **subtitle_alignment:** proofread or generate review-pending subtitles against edited audio; do not make content-cut decisions.
 - **final_draft_audit:** read-only discrepancy report. The current rendered/visible subtitle is the wording authority; do not propose cuts or write-back instructions.
+
+Default to read-only analysis and planning. A scripted `workflow` run requires one selected scope; see [references/scripted-workflow.md](references/scripted-workflow.md) for CLI behavior. Scope selection does not authorize a Jianying project write.
 
 ## Core workflow
 
@@ -34,23 +36,12 @@ For **content_edit**, choose the entry by source evidence:
 7. Once stable or approved, refine delivery: review fillers, false starts, repetitions, pauses, and joins in context. Have a human audition proposed changes where possible and record the verdict. Agent playback or waveform analysis does not clear `human_listening`; without a person's recorded verdict, keep it pending.
 8. Proofread current subtitles or generate a separate pending alignment plan from a timed transcript. Existing-subtitle-only alignment does not require a transcript; generation and playback mapping do. After human review, record learning and stage differences without changing a draft.
 
-## Phase handoffs and next-step suggestions
+## Phase handoff
 
-At each phase exit, report the result/state, one recommended next step, and any
-gate that is still pending. A recommendation does not approve a decision or
-authorize a draft write; stop at a human gate instead of advancing it for them.
-
-| Phase result | Next-step suggestion |
-|---|---|
-| Source and transcript evidence are ready | Continue to whole-source orientation and semantic-block planning; request missing evidence before dependent decisions. |
-| `content_pass: stable` | Continue delivery refinement when it is in scope; otherwise present the plan for user review. Set `approved` only after explicit user approval. |
-| Delivery-cleanup candidates are prepared | Have a person audition the proposed changes. Semantic or protected-fact risk returns to content review; unresolved listening stays pending. |
-| Content plan is approved | If project execution was requested and authorized, hand the plan to `jianying-editor`; otherwise deliver the plan. After execution, align subtitles from the final playback order when requested or needed for packaging. |
-| `subtitle_alignment` is pending | Request the required proofreading/listening review. If audio or edit order changes, refresh the audio evidence and rerun alignment. |
-| `subtitle_alignment: approved` | Continue to `jianying-packaging` only when packaging was requested; otherwise deliver the alignment result and stop. |
-| `stage_comparison` report is complete | Deliver the read-only report and stop. Any edit planning requires a separate `content_edit` request. |
-| `final_draft_audit` report is complete | Deliver the discrepancy report and stop. If follow-up is requested, route content wording to `content_edit` and timing/alignment issues to `subtitle_alignment`. |
-| Required evidence is missing or blocked | Name the missing evidence, request it, and hold only the dependent phase. |
+Report the selected scope, current state, and any pending gate using the single
+state contract in [references/workflow-state.md](references/workflow-state.md).
+Deliver the requested result and stop; do not expand into adjacent phases or
+recommend another phase unless the user asks.
 
 ### Multi-stage comparison conversations
 

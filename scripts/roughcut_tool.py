@@ -131,37 +131,6 @@ def _alignment_plan_for_srt(report: dict[str, Any]) -> dict[str, Any] | None:
 
 
 
-AUDIO_IDENTITY_FIELDS = ("content_hash", "duration_us", "sample_rate", "channels", "codec")
-
-
-def _expected_audio_identity(plan: dict[str, Any]) -> dict[str, Any] | None:
-    source = plan.get("source")
-    if not isinstance(source, dict) or not isinstance(source.get("evidence"), list):
-        return None
-    for item in source["evidence"]:
-        if isinstance(item, dict) and item.get("kind") == "edited_audio":
-            identity = item.get("identity")
-            return identity if isinstance(identity, dict) else None
-    return None
-
-
-def _audio_identity_mismatches(expected: dict[str, Any] | None, actual: dict[str, Any] | None) -> list[str]:
-    errors: list[str] = []
-    expected = expected or {}
-    actual = actual or {}
-    for field in AUDIO_IDENTITY_FIELDS:
-        if field not in expected:
-            errors.append(f"audio identity mismatch: plan identity missing {field}")
-        elif field not in actual:
-            errors.append(f"audio identity mismatch: current audio identity missing {field}")
-        elif expected[field] != actual[field]:
-            errors.append(
-                f"audio identity mismatch: {field} plan={expected[field]!r} "
-                f"current={actual[field]!r}"
-            )
-    return errors
-
-
 def _run(args: argparse.Namespace) -> dict[str, Any]:
     if args.command == "import-transcript":
         return import_ai_jian_koubo_whisperx(load_json(args.input))
@@ -173,27 +142,6 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
         if args.kind == "alignment":
             plan = unwrap_report(load_json(args.path))
             validation = validate_alignment_plan(plan)
-            if getattr(args, "audio", None):
-                audio_report = extract_waveform_evidence(_load_audio_input(args.audio))
-                if audio_report.get("input_errors"):
-                    return result(
-                        "roughcut_cli",
-                        input_errors=audio_report["input_errors"],
-                        status="blocked",
-                    )
-                if audio_report.get("errors"):
-                    return result(
-                        "roughcut_cli",
-                        errors=audio_report["errors"],
-                        status="blocked",
-                    )
-                actual = (audio_report.get("data") or {}).get("identity")
-                mismatches = _audio_identity_mismatches(
-                    _expected_audio_identity(plan),
-                    actual if isinstance(actual, dict) else None,
-                )
-                validation["errors"] = [*validation.get("errors", []), *mismatches]
-                validation["ok"] = not validation["errors"]
             return _validated("alignment_plan_validation", validation)
         if args.kind == "report":
             return _validated("analysis_report_validation", validate_analysis_report(unwrap_report(load_json(args.path))))
@@ -255,11 +203,14 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
 
     if args.command == "workflow":
         bundle = unwrap_report(load_json(args.input))
-        if args.subtitle_mode is not None:
+        if args.scope is not None or args.subtitle_mode is not None:
             if not isinstance(bundle, dict):
                 return result("roughcut_workflow", input_errors=["workflow bundle must be an object"])
             bundle = dict(bundle)
-            bundle["subtitle_mode"] = args.subtitle_mode
+            if args.scope is not None:
+                bundle["scope"] = args.scope
+            if args.subtitle_mode is not None:
+                bundle["subtitle_mode"] = args.subtitle_mode
         return run_fixed_workflow(bundle)
 
     if args.command == "compare":
@@ -353,8 +304,6 @@ def _parser() -> argparse.ArgumentParser:
     for kind in ("plan", "alignment", "report", "learning", "comparison-report"):
         item = validate_sub.add_parser(kind)
         item.add_argument("path")
-        if kind == "alignment":
-            item.add_argument("--audio", help="current edited-audio path or waveform JSON to recheck identity")
     generic = validate_sub.add_parser("generic")
     generic.add_argument("paths", nargs="+")
     generic.add_argument("--forbid", action="append", default=[])
@@ -402,6 +351,7 @@ def _parser() -> argparse.ArgumentParser:
 
     workflow = sub.add_parser("workflow")
     workflow.add_argument("--input", required=True, help="generic rough-cut workflow bundle JSON")
+    workflow.add_argument("--scope", help="override the bundle scope: content, delivery, subtitle_alignment, or all")
     workflow.add_argument("--subtitle-mode", choices=("auto", "existing", "generate"), help="override the bundle subtitle_mode")
     workflow.add_argument("--srt-out", help="optional UTF-8 SRT preview output path")
 

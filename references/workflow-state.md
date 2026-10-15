@@ -55,35 +55,39 @@ If packaging discovers a semantic problem, set the packaging result to `needs_ro
 ## Preparation coverage does not advance review state
 
 The `run_fixed_workflow` / CLI `workflow` summary is coverage metadata, not a
-claim of completed human review. `stage_count` and `provenance_counts` count
-recorded deterministic stage reports, including failures. `waveform_passes`
-counts the shared successful evidence stage once even when scans and subtitle
-alignment reuse it; it is not a listening verdict or an FFmpeg-attempt count.
+claim of completed human review. The CLI requires `content`, `delivery`,
+`subtitle_alignment`, or `all`; it never defaults to a full run. `stage_count`
+and `provenance_counts` count attempted deterministic stages, including
+failures. `executed_stages` keeps failed attempts visible. `skipped_stages`
+marks out-of-scope work as `not_requested` and selected work that did not run as
+`blocked` or `not_applicable`. Only selected-scope work appears in
+`blocked_work`.
 
-`agent_required_count` lists pending interpretation categories. `gate_counts`
-counts declared human gate categories: three review gates and one listening
-gate, all pending. A script-generated artifact never becomes `agent_interpreted`
-or `human_verified` merely because the workflow succeeded. Record contextual
-agent reasoning and human verdicts explicitly in the relevant report/plan;
-agent playback or waveform analysis cannot satisfy `human_listening`.
+`waveform_passes` counts the shared successful evidence stage once when a
+selected scope uses it; in `all`, scans and subtitle alignment reuse the same
+result. It is not a listening verdict or an FFmpeg-attempt count.
+`agent_required` and `review_gates` contain only the selected scope's pending
+categories. A script-generated artifact never becomes `agent_interpreted` or
+`human_verified` merely because the workflow succeeded. Record contextual agent
+reasoning and human verdicts explicitly in the relevant report/plan; agent
+playback or waveform analysis cannot satisfy `human_listening`.
 
-Inspect `data.evidence_status` and `data.blocked_work` before handoff.
-`unavailable_evidence_count` counts unavailable evidence categories;
-`blocked_stage_count` counts distinct failed or skipped dependent stages, not
-errors. Missing audio or unknown subtitle state blocks alignment; missing timed
-transcript blocks generation and source-to-edited mapping; unresolved mapping
-blocks candidate scans. Existing subtitles may still be aligned against edited
-audio without a content mapping or transcript. This permitted partial path does
-not establish that blocked content work passed. Out-of-scope transcript evidence
-is `not_assessed`; missing required evidence remains `unavailable`.
+Inspect `data.evidence_status`, `executed_stages`, `skipped_stages`, and
+`blocked_work` before handoff. Out-of-scope evidence is `not_assessed`;
+`unavailable_evidence_count` counts only unavailable evidence categories.
+Missing audio or unknown subtitle state blocks selected alignment work; missing
+timed transcript blocks selected generation or source-to-edited mapping;
+unresolved mapping blocks selected candidate scans. Existing subtitles may be
+aligned against edited audio without a content mapping or transcript.
+In `all`, a blocked subtitle branch does not stop independent delivery stages
+when their own audio and playback evidence is available.
 
 When waveform extraction fails but a usable playback map permits text scans,
-`candidate_scans` may succeed with `pause_scan_status=not_executed`. In this
-partial result, `data.blocked_work` explicitly includes
-`candidate_scans.pause_scan`, counted once in `blocked_stage_count`, alongside
-blocked waveform extraction and subtitle alignment. Successful text-scan
-reports and their candidates remain available; the aggregate candidate-stage
-success does not imply that the audio-dependent pause scan ran.
+`candidate_scans` may succeed with `pause_scan_status=not_executed`. The
+selected-scope `blocked_work` includes `candidate_scans.pause_scan`; in `all`,
+it also includes blocked waveform extraction and subtitle alignment. Successful
+text-scan reports and candidates remain available, but aggregate scan success
+does not imply that the audio-dependent pause scan ran.
 
 Preparation does not set `content_pass` or `subtitle_alignment` to `stable` or
 `approved`, clear `human_review`, or authorize a project write. Semantic

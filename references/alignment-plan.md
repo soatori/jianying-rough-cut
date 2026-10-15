@@ -64,13 +64,13 @@ playback-map -> scan -> build-alignment -> validate alignment
 
 `build-alignment` requires verified token mapping and canonical `units`; it calculates every new `start_us/end_us` from edited token times. Any old subtitle `start_us/end_us` is retained only under evidence such as `previous_range`, never copied to the new cue. Each unit has a stable `id`, `semantic_unit_id`, `review_status: "pending"`, and token-mapping evidence; boundaries use validator-supported `basis: "word_boundary"` and `review: "pending"`. Missing tokens, duplicate semantic IDs, non-contiguous mapped intervals, unresolved remaps, or missing duration/evidence block the generated report, which is self-checked by the alignment validator.
 
-To recheck a saved plan against the current edited audio, use:
+Validation checks the plan structure and the identity recorded in the plan. It
+does not read or probe the current audio. If edited audio changes, regenerate
+the evidence with `subtitle-align` or `workflow --scope subtitle_alignment`,
+then validate the new plan with the command at the top of this document.
 
-```powershell
-python scripts/roughcut_tool.py validate alignment <plan.json> --audio <current-audio>
-```
-
-A mismatch in any identity field blocks validation.
+A stale plan must not be reused after a playback-order, duration, or stream
+format change; validation cannot discover changes in an external audio file.
 
 The no-subtitle route is separate and does not require Jianying token IDs:
 

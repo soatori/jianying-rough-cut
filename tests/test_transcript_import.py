@@ -118,6 +118,7 @@ class TranscriptImportTests(unittest.TestCase):
         self.assertEqual(subtitles["data"]["subtitle_units"][0]["text"], "你好")
 
         workflow = run_fixed_workflow({
+            "scope": "subtitle_alignment",
             "subtitle_mode": "generate",
             "subtitles": [],
             "transcript": report,
@@ -181,6 +182,7 @@ class TranscriptImportTests(unittest.TestCase):
 
     def test_existing_subtitle_alignment_can_run_without_a_transcript(self):
         report = run_fixed_workflow({
+            "scope": "subtitle_alignment",
             "subtitle_mode": "existing",
             "subtitles": [{"id": "cue-1", "semantic_unit_id": "u1", "text": "已有字幕", "start_us": 100_000, "end_us": 500_000}],
             "audio": {"duration_us": 1_000_000, "pauses": []},

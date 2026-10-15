@@ -3,42 +3,33 @@
 Use the CLI for deterministic preparation. Keep semantic judgment, technical
 listening, and approval as explicit human gates.
 
-Stage map: the Material, Transcript, and Edited-time rows are **粗剪**
-preparation (structure and evidence); the Cleanup-candidates and both subtitle
-rows are **精剪** (the delivery-refinement loop and subtitle alignment). Here
-"script-first" means *CLI-script-first* deterministic prep, unrelated to whether
+"Script-first" means *CLI-script-first* deterministic prep, unrelated to whether
 the speaker had a written 文案 — the 文案 / 无文案 choice lives in the copy-first
 and discovery runbooks.
 
-When the request is subtitle-only, select the `subtitle_alignment` operating
-mode. Do not run the full content-edit route just to align or generate
-subtitles. The input must identify audio from the final edited playback order
-(or precomputed waveform evidence), including its duration and preferably a
-content hash. Missing, stale, source-only, or unreadable audio blocks before
-generation and before FFmpeg; request a fresh application-independent mixdown
-instead of inferring project clip selection inside this skill. In `auto`, missing or unreadable subtitle state also blocks;
-explicit `generate` may omit `subtitles` or provide `subtitles: []`, but
-must block if a supplied subtitle-state object cannot be read.
+`workflow` requires an explicit scope in the bundle or on the CLI. The CLI
+`--scope` overrides the bundle. Missing or invalid scope returns
+`scope_required` or `invalid_scope`; the command never defaults to a full run.
 
-`playback-map` and subtitle generation require timed transcript evidence. If it
-is missing, stop those dependent stages and route to an authorized compatible
-transcription capability or request the transcript. Existing-subtitle-only
-alignment may proceed without a transcript when current subtitles and final
-edited audio are available.
+| Scope | Runs | Excludes |
+|---|---|---|
+| `content` | material audit, transcript correction, playback-map preparation | waveform, candidate scans, subtitle alignment |
+| `delivery` | candidate scans and the waveform evidence they need | material audit, transcript correction, playback-map building, subtitle alignment |
+| `subtitle_alignment` | existing or generated subtitle path and one waveform pass | material audit, candidate scans, edit-map/playback-map work |
+| `all` | the full chain, sharing one waveform result between pause scans and alignment | — |
 
-At each stage exit, state what completed, what remains pending, and the next
-recommended step. Do not run a dependent stage when its required evidence or
-human gate is unavailable.
+`subtitle_mode` (`auto`, `existing`, or `generate`) only affects
+`subtitle_alignment` and `all`. `auto` chooses an existing-subtitle or
+generation path; it never chooses the workflow scope. Existing-subtitle-only
+alignment may proceed without a transcript. Playback-map creation and subtitle
+generation require timed transcript evidence. If it is missing, block only the
+dependent stage and request the transcript or authorized transcription.
 
-| Stage | Script action | Agent-required follow-up | Human gate | Next-step suggestion |
-|---|---|---|---|---|
-| Material | `preflight` or the `workflow` bundle stage | interpret completeness limits without inventing missing evidence | confirm whether missing/partial evidence is acceptable | If coverage is sufficient, continue to transcript correction; otherwise request missing media and hold affected work. |
-| Transcript correction | `correct-transcript` with confirmed dictionaries | review unresolved terminology and protected facts | listen to unresolved names, numbers, models, and conditions | Once corrections are settled or flagged, build the edited-time map and source outline. |
-| Edited time | `playback-map` from the approved edit map | inspect semantic membership/order and mapping limits | confirm order/remap is verified | When mapping is usable, run requested cleanup scans and/or subtitle alignment. |
-| Cleanup candidates | `scan --kind all` or the `workflow` bundle stage | classify pause functions and semantic risk in context | listen in context; candidates never mean delete | Keep unresolved items pending; return semantic changes to content review, otherwise carry reviewed local candidates into the refinement plan. |
-| Existing subtitles | `subtitle-align` or `workflow --subtitle-mode existing` | cross-check wording and boundary evidence | preserve current text/order/segmentation; listen to every flagged edge | After approval, package only if requested; if audio changes, refresh evidence and rerun alignment. |
-| No subtitles | `subtitle-generate` or `workflow --subtitle-mode generate` | proofread generated units and unresolved terms | listen to generated text and every flagged edge; approve the plan and SRT | After approval, package only if requested; if audio changes, refresh evidence and regenerate/re-align. |
-| Retrospective | `retrospective` | separate reusable lessons from case-specific records | record only corrections the user actually accepted | Keep accepted reusable lessons, deliver the result, and end this workflow. |
+For subtitle alignment, the input must identify audio from final edited
+playback order (or precomputed waveform evidence), including its duration and
+preferably a content hash. Missing, stale, source-only, or unreadable audio
+blocks before generation and FFmpeg; request a fresh application-independent
+mixdown rather than infer project clip selection inside this skill.
 
 ## Two subtitle modes
 
@@ -49,7 +40,7 @@ used only when the timeline has no subtitles and a timed transcript is
 available. It corrects text, keeps the transcript's token/segment times, then
 uses the edited-timeline waveform to build a review-pending alignment plan.
 
-`auto` is fail-closed: a non-empty `subtitles` input selects `existing`; an
+`auto` is fail-closed within a requested subtitle scope: a non-empty `subtitles` input selects `existing`; an
 explicit `subtitles: []` together with a timed transcript selects `generate`.
 Missing or unreadable subtitle-state evidence is not treated as “no subtitles”;
 the report asks for an explicit mode or a read-only subtitle-state probe. An
@@ -75,11 +66,11 @@ candidate. Only an explicit config with
 larger offsets always retain the saved boundary and carry a listening flag.
 
 The current subtitle text and segmentation are input evidence, not a rebuild
-source. Use `validate alignment <plan> --audio <current-audio>` after any audio
-replacement; mismatched hash, duration, sample rate, channels, or codec blocks
-the plan. Identical adjacent subtitle text produces a warning unless the unit
-carries intentional repeat evidence.
- The command does not restore an older script order, overwrite wording,
+source. `validate alignment <plan>` checks the plan structure and its recorded
+identity only; it does not reread audio. If audio changes, rerun `subtitle-align`
+or `workflow --scope subtitle_alignment` to produce fresh evidence. Identical
+adjacent subtitle text produces a warning unless the unit carries intentional
+repeat evidence. The command does not restore an older script order, overwrite wording,
 or emit Jianying IDs or write instructions.
 
 For a timeline with no subtitles, generate a plan and an UTF-8 SRT review
@@ -105,23 +96,26 @@ is required before a candidate becomes the selected boundary. Both paths keep
 
 ## One-shot deterministic preparation
 
-When transcript, edit map, current subtitle units, and edited audio are already
-available as application-independent JSON, place them in one `workflow` bundle
-and run:
+Place the application-independent inputs for the requested work in one
+`workflow` bundle. The bundle must include its scope; the CLI flag may override
+it. For example, to run the full chain:
 
 ```powershell
 python scripts/roughcut_tool.py workflow \
   --input "<roughcut-workflow.json>" \
-  --subtitle-mode auto \
+  --scope all \
   --out "<roughcut-workflow-report.json>"
 ```
 
-The CLI flag overrides the bundle's `subtitle_mode`; omitting it preserves the
-bundle value. Add `--srt-out "<subtitle-preview.srt>"` when the selected
-workflow path is expected to produce a subtitle alignment plan.
+For a scope-specific run, replace `all` with `content`, `delivery`, or
+`subtitle_alignment`. `--subtitle-mode` overrides only the subtitle path and
+has no effect for `content` or `delivery`. Add `--srt-out
+"<subtitle-preview.srt>"` only when the scope produces a subtitle alignment
+plan.
 
-The bundle may contain `inputs`, `transcript`, `edit_map`, `subtitles`, `audio`,
-`dictionaries`, `preferences`, `pause_config`, and `subtitle_mode`. For
+The bundle must contain `scope` and may contain `inputs`, `transcript`,
+`edit_map`, `playback_map`, `subtitles`, `audio`, `dictionaries`, `preferences`,
+`pause_config`, and `subtitle_mode`. For
 `subtitle_mode=existing`, `subtitles` must be non-empty. For
 `subtitle_mode=generate`, `subtitles` must be absent or explicitly empty and
 `transcript` must contain timed segments or words. With `subtitle_mode=auto`,
@@ -129,9 +123,13 @@ use a non-empty subtitle list for the existing path or an explicit empty list
 plus timed transcript for the generation path; otherwise the workflow blocks
 because the subtitle state is unknown.
 
-The workflow reuses the single waveform result for pause scanning and subtitle
-alignment, so it does not invoke ffmpeg again for the candidate scan. It never
-invokes `jianying-editor`, reads a Jianying project, or writes a Jianying draft.
+`all` reuses the single waveform result for pause scanning and subtitle
+alignment. `executed_stages` lists attempted stages, including failed ones;
+`skipped_stages` marks out-of-scope stages as `not_requested` and selected but
+unrun stages as `blocked` or `not_applicable`. A failed stage remains in
+`executed_stages` and appears in `blocked_work`. `blocked_work` contains only
+selected-scope work. This workflow never invokes `jianying-editor`, reads a
+Jianying project, or writes a Jianying draft.
 
 ## Coverage summary and pending work
 
@@ -140,17 +138,20 @@ completed human review. Its counts describe this preparation run only:
 
 | Field | Counting unit and limit |
 |---|---|
+| `scope` | The one selected workflow scope. |
 | `stage_count` | Recorded deterministic stage reports, including failed attempts; skipped stages are excluded. |
+| `executed_stages` | Stage names attempted during this run; failures remain listed. |
+| `skipped_stages` | Stage-name to reason mapping: `not_requested`, `blocked`, or `not_applicable`. |
 | `artifact_count` | Artifact entries emitted by stages; inspect stage status before consuming them. |
 | `waveform_passes` | Successful shared waveform-evidence stage: zero or one. Precomputed evidence counts once; scans and alignment reuse it. This is not the number of FFmpeg calls, normalizations, or failed attempts. |
 | `provenance_counts` | Top-level stage reports by `script_generated`, `agent_interpreted`, `human_verified`, or `unavailable`. Each stage explicitly labels its deterministic preparation as `script_generated`, including failed reports; this does not relabel its input evidence or mean its contents were reviewed. Agent/human counts remain zero. |
-| `agent_required_count` | Three declared follow-up categories in `data.agent_required`: transcript interpretation, semantic orientation/audit, and contextual pause/risk assessment. Categories are requirements, not completed actions or per-candidate counts. |
-| `gate_counts` | Four declared gates in `data.review_gates`: three `human_review` and one `human_listening`. All four remain `pending`; `cleared` is zero. Counts are gate categories, not reviewed rows or listened-to edges. |
-| `blocked_stage_count` | Unique names in `data.blocked_work`: failed recorded stages plus unexecuted waveform, candidate-scan, and alignment work; generation is included when requested or selected. A skipped downstream stage is counted once even with several missing prerequisites. |
+| `agent_required_count` | Scope-specific follow-up categories in `data.agent_required`; these are requirements, not completed actions or per-candidate counts. |
+| `gate_counts` | Scope-specific human gates in `data.review_gates`; all remain pending until explicitly reviewed. Counts are gate categories, not reviewed rows or listened-to edges. |
+| `blocked_stage_count` | Unique selected-scope names in `data.blocked_work`: failed stages plus work not run because a prerequisite was unavailable. Out-of-scope stages are excluded. |
 | `unavailable_evidence_count` | Unavailable entries in `data.evidence_status`, counted once per evidence category rather than per error or affected stage. |
 
 `data.evidence_status` distinguishes audio, transcript, subtitle state, and
-playback mapping. `available` means readable/accepted at the relevant
+playback mapping. Out-of-scope evidence is `not_assessed`. `available` means readable/accepted at the relevant
 preparation step, not semantically correct or human-verified. Required evidence
 that is missing, unreadable, unresolved, or cannot be evaluated after an upstream
 block is `unavailable`. An omitted transcript is `not_assessed` when generation
@@ -162,9 +163,9 @@ Missing audio or unknown subtitle state stops alignment preparation. Missing
 transcript blocks generation and source-to-edited mapping; an already supplied
 usable playback map does not require another transcript. Missing or unresolved
 mapping blocks candidate scans while existing-subtitle waveform alignment may
-continue. Thus `ok=true` can coexist with blocked optional content-scan work;
-inspect both stage records and `blocked_work` before choosing a handoff. Early
-returns retain the same coverage fields, and no evidence count clears a gate.
+continue. Inspect `executed_stages`, `skipped_stages`, and `blocked_work` before
+handoff. Early returns retain the same coverage fields, and no evidence count
+clears a gate.
 
 Agent interpretation must supply contextual reasoning and provenance separately.
 Neither ASR, a long pause, a waveform edge, nor a successful CLI run authorizes

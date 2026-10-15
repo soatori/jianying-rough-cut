@@ -21,7 +21,7 @@ PAUSE_FUNCTIONS = (
 )
 
 
-def _units(playback: Any) -> list[dict[str, Any]] | None:
+def canonical_units(playback: Any) -> list[dict[str, Any]] | None:
     if isinstance(playback, dict):
         if "units" in playback:
             value = playback.get("units")
@@ -37,7 +37,7 @@ def _units(playback: Any) -> list[dict[str, Any]] | None:
         for item in normalized:
             start = item.get("start_us", item.get("edited_start_us"))
             end = item.get("end_us", item.get("edited_end_us"))
-            if not item.get("id") or not isinstance(start, int) or isinstance(start, bool) or not isinstance(end, int) or isinstance(end, bool) or end <= start:
+            if not item.get("id") or not isinstance(start, int) or isinstance(start, bool) or start < 0 or not isinstance(end, int) or isinstance(end, bool) or end <= start:
                 return None
         return normalized
     if isinstance(playback, list):
@@ -56,7 +56,7 @@ def _candidate(kind: str, left: dict[str, Any], right: dict[str, Any], reason: s
 
 
 def detect_repetition_candidates(playback: Any) -> dict[str, Any]:
-    units = _units(playback)
+    units = canonical_units(playback)
     if (error := _unit_error("repetition_candidates", units)) is not None:
         return error
     candidates = []
@@ -68,7 +68,7 @@ def detect_repetition_candidates(playback: Any) -> dict[str, Any]:
 
 
 def detect_false_start_candidates(playback: Any) -> dict[str, Any]:
-    units = _units(playback)
+    units = canonical_units(playback)
     if (error := _unit_error("false_start_candidates", units)) is not None:
         return error
     candidates = []
@@ -80,7 +80,7 @@ def detect_false_start_candidates(playback: Any) -> dict[str, Any]:
 
 
 def detect_misspoken_retake_candidates(playback: Any) -> dict[str, Any]:
-    units = _units(playback)
+    units = canonical_units(playback)
     if (error := _unit_error("misspoken_retake_candidates", units)) is not None:
         return error
     markers = ("不对", "应该", "不是", "准确说", "更正")
@@ -92,7 +92,7 @@ def detect_misspoken_retake_candidates(playback: Any) -> dict[str, Any]:
 
 
 def detect_english_stutter_candidates(playback: Any) -> dict[str, Any]:
-    units = _units(playback)
+    units = canonical_units(playback)
     if (error := _unit_error("english_stutter_candidates", units)) is not None:
         return error
     candidates = []
@@ -104,7 +104,7 @@ def detect_english_stutter_candidates(playback: Any) -> dict[str, Any]:
 
 
 def detect_filler_candidates(playback: Any, preferences: Any = None) -> dict[str, Any]:
-    units = _units(playback)
+    units = canonical_units(playback)
     if (error := _unit_error("filler_candidates", units)) is not None:
         return error
     configured = preferences.get("fillers") if isinstance(preferences, dict) else None
