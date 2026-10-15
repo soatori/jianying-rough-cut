@@ -21,7 +21,7 @@ Use this skill to plan speech-led content edits and subtitle alignment from sour
 - **subtitle_alignment:** proofread or generate review-pending subtitles against edited audio; do not make content-cut decisions.
 - **final_draft_audit:** read-only discrepancy report. The current rendered/visible subtitle is the wording authority; do not propose cuts or write-back instructions.
 
-Default to read-only analysis and planning. A scripted `workflow` run requires one selected scope; see [references/scripted-workflow.md](references/scripted-workflow.md) for CLI behavior. Scope selection does not authorize a Jianying project write.
+Default to read-only analysis and planning. A scripted `workflow` run requires one selected scope; use one workflow invocation for that scope and do not rerun stages already listed in its report with unchanged inputs. See [references/scripted-workflow.md](references/scripted-workflow.md) for bundle, reuse, and CLI-output rules. Scope selection does not authorize a Jianying project write.
 
 ## Core workflow
 
@@ -81,6 +81,6 @@ Read only the material needed for the selected task:
 
 ## Outputs and handoff
 
-For content editing, produce an evidence summary and a validated content decision plan. Keep delivery-refinement decisions separate from content decisions. Subtitle work uses a separate application-independent alignment plan; generated subtitles remain pending human review. A final-draft audit is read-only.
+For content editing, produce an evidence summary and a validated content decision plan. Keep delivery-refinement decisions separate from content decisions. Subtitle work uses a separate application-independent alignment plan; generated subtitles remain pending human review. A final-draft audit is read-only. For CLI handoffs, keep the concise status in the conversation and pass the full report path plus only the needed artifact paths.
 
-Validate plans with `python scripts/roughcut_tool.py validate plan <plan.json>` or `python scripts/roughcut_tool.py validate alignment <plan.json>`, as applicable. Use references/scripted-workflow.md for command inputs and preparation details. Perform project mutations only through jianying-editor and only when the user has authorized that mutation; approval of a plan alone does not authorize a write.
+Use `validate plan` for content plans and `validate alignment` for plans created or edited outside the workflow. `workflow` and `subtitle-align` validate the alignment plans they generate; do not rerun `validate alignment` on the same unchanged output. Run validation again after a plan edit or when the user requests validation only. Use references/scripted-workflow.md for command inputs and preparation details. Perform project mutations only through jianying-editor and only when the user has authorized that mutation; approval of a plan alone does not authorize a write.

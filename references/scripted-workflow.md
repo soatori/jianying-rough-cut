@@ -18,6 +18,11 @@ and discovery runbooks.
 | `subtitle_alignment` | existing or generated subtitle path and one waveform pass | material audit, candidate scans, edit-map/playback-map work |
 | `all` | the full chain, sharing one waveform result between pause scans and alignment | — |
 
+`candidate_scans` means delivery-cleanup scans for fillers, repetitions,
+false starts, retakes, or pauses. Subtitle alignment emits separate
+review-pending boundary candidates; its scope does not run delivery
+`candidate_scans`.
+
 `subtitle_mode` (`auto`, `existing`, or `generate`) only affects
 `subtitle_alignment` and `all`. `auto` chooses an existing-subtitle or
 generation path; it never chooses the workflow scope. Existing-subtitle-only
@@ -104,8 +109,24 @@ it. For example, to run the full chain:
 python scripts/roughcut_tool.py workflow \
   --input "<roughcut-workflow.json>" \
   --scope all \
+  --format text \
   --out "<roughcut-workflow-report.json>"
 ```
+
+Build the bundle once for the requested scope and invoke `workflow` once. Do not
+rerun stages listed as successful in `executed_stages` while their inputs are
+unchanged. If a stage is blocked, correct its missing or invalid input before
+rerunning the requested scope. Use `--format text --out <report.json>` for
+Agent runs: the CLI prints a compact summary and stores the full JSON report at
+the specified path. Pass the report path and only the required artifact paths
+to the next phase instead of copying the full report into the conversation.
+
+Reuse supplied playback maps and precomputed waveform evidence while their
+recorded source identities and input files remain unchanged. Refresh waveform
+evidence when the edited audio hash or duration changes; rebuild the affected
+bundle when its transcript, subtitle state, edit map, playback order, or
+selected scope changes. Never infer current evidence from a report for an older
+input state.
 
 For a scope-specific run, replace `all` with `content`, `delivery`, or
 `subtitle_alignment`. `--subtitle-mode` overrides only the subtitle path and
@@ -113,9 +134,14 @@ has no effect for `content` or `delivery`. Add `--srt-out
 "<subtitle-preview.srt>"` only when the scope produces a subtitle alignment
 plan.
 
+Use a standalone CLI command only when it fully represents the requested
+single-stage task. Do not run both a standalone command and `workflow` for the
+same unchanged inputs.
+
 The bundle must contain `scope` and may contain `inputs`, `transcript`,
 `edit_map`, `playback_map`, `subtitles`, `audio`, `dictionaries`, `preferences`,
-`pause_config`, and `subtitle_mode`. For
+`pause_config`, and `subtitle_mode`. `audio` may be the edited-audio path or a
+precomputed waveform-evidence JSON accepted by the waveform loader. For
 `subtitle_mode=existing`, `subtitles` must be non-empty. For
 `subtitle_mode=generate`, `subtitles` must be absent or explicitly empty and
 `transcript` must contain timed segments or words. With `subtitle_mode=auto`,
