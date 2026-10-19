@@ -80,6 +80,16 @@ Break screens by the highest-priority rule that applies, in this order:
 4. **Paragraph edge + pause** — used only when a token carries no punctuation.
 5. **A genuinely long audible pause** — to split an over-long sentence internally.
 
+Rule 2 chooses the boundary; it does not decide what the viewer finally reads.
+For a vertical delivery (`canvas_width < canvas_height`), hand each unit to the
+standing subtitle format profile in
+[../../jianying-packaging/references/semantic-packaging.md](../../jianying-packaging/references/semantic-packaging.md#subtitle-format-profile-preflight-before-emphasis-selection):
+one sentence per `\n` line, the split-trigger punctuation deleted rather than
+kept at a line end, at most 10 characters per line, and `嗯 啊 欸 哦 呢 呐` on
+their own line. Those line rules are a cross-project format profile, not a
+per-case taste value. Horizontal delivery is out of scope for it and keeps its
+own per-case folding convention.
+
 Fragment handling: merge an incidental one-to-two-character fragment back as the tail of the previous screen, but **never across a sentence period** and never merge a semantically complete short unit. A short opener like "你看" starts a new sentence; a model code, number, unit, or named token may stand alone. If splitting produces an incidental fragment, that boundary was not a real semantic boundary — merge it back. A short screen from fast speech is not a defect and must not be flagged: warning on normal speech only teaches reviewers to ignore warnings. Flag only `tooFast` (a screen with more text than its dwell time can be read).
 
 ## Hybrid boundary policy
@@ -101,7 +111,10 @@ Record `mode`, `basis`, evidence, confidence, and review status for both the sta
 - For each screen's outer start/end, use the highest-priority compatible boundary: punctuation or complete semantic token first, strong waveform pause second, and material/picture boundary third. If a material boundary would split a word or conflict with audio, keep the semantic/audio boundary and record the picture crossing for review.
 - When material-boundary alignment is explicitly required, constrain only the outer start/end of each semantic screen. Internal material cuts may be crossed; do not manufacture duplicate screens to eliminate every crossing.
 - Report exact material-aligned edges, waveform-near edges, word-near edges, screens crossing material cuts, and adjacent duplicate text. The validator warns on identical adjacent text; repeat it only when speech or reading cadence repeats, and record `repeat_intent` with intentional evidence to suppress that warning. Never delete a repeated screen automatically.
-- Keep character-per-screen limits, detector thresholds, and dwell-time tolerances as case preferences or plan configuration, not universal constants.
+- Keep detector thresholds and dwell-time tolerances as case preferences or plan
+  configuration, not universal constants. Per-line character limits are the same
+  kind of configuration, except for the vertical profile referenced in
+  [Segmentation ladder](#segmentation-ladder), which is a standing format rule.
 
 ## Evidence cautions
 
