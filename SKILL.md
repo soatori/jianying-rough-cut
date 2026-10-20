@@ -23,6 +23,16 @@ Use this skill to plan speech-led content edits and subtitle alignment from sour
 
 Default to read-only analysis and planning. A scripted `workflow` run requires one selected scope; use one workflow invocation for that scope and do not rerun stages already listed in its report with unchanged inputs. See [references/scripted-workflow.md](references/scripted-workflow.md) for bundle, reuse, and CLI-output rules. Scope selection does not authorize a Jianying project write.
 
+## Quick route
+
+- Content decisions: `python scripts/roughcut_tool.py workflow --input <bundle.json> --scope content`.
+- Delivery cleanup: `python scripts/roughcut_tool.py workflow --input <bundle.json> --scope delivery`.
+- Existing subtitle proofing/alignment: `python scripts/roughcut_tool.py workflow --input <bundle.json> --scope subtitle_alignment --subtitle-mode existing`.
+- Subtitle generation: `python scripts/roughcut_tool.py workflow --input <bundle.json> --scope subtitle_alignment --subtitle-mode generate` with a timed transcript.
+- Supplied edit-stage comparison: `compare`; do not chain it into a content-edit workflow unless requested.
+
+Use one `workflow` bundle for the selected scope; do not run its standalone stages again on unchanged inputs. Save intermediate bundles/reports in workspace `temp/` and requested deliverables in `outputs/`. Keep each evidence, editorial review, and handoff round near a soft budget of 50 tool calls; checkpoint the scope, audio identity, evidence/report paths, and pending human-review gates before continuing.
+
 ## Core workflow
 
 For **content_edit**, choose the entry by source evidence:

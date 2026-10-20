@@ -120,6 +120,8 @@ rerunning the requested scope. Use `--format text --out <report.json>` for
 Agent runs: the CLI prints a compact summary and stores the full JSON report at
 the specified path. Pass the report path and only the required artifact paths
 to the next phase instead of copying the full report into the conversation.
+Keep internal bundles and handoff reports in the current workspace `temp/`; put
+requested final reports and SRT deliverables in `outputs/`.
 
 Reuse supplied playback maps and precomputed waveform evidence while their
 recorded source identities and input files remain unchanged. Refresh waveform
