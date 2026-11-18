@@ -246,16 +246,10 @@ def validate(plan: Any) -> dict[str, Any]:
         if not isinstance(detector, dict):
             errors.append("policy.detector must be an object")
         else:
-            for field in ("hop_us", "window_us", "pause_min_us", "pause_cap_us"):
+            for field in ("pause_min_us",):
                 value = detector.get(field)
                 if not is_int(value) or value < 0:
                     errors.append(f"policy.detector.{field} must be a non-negative integer")
-            if (
-                is_int(detector.get("pause_min_us"))
-                and is_int(detector.get("pause_cap_us"))
-                and detector["pause_cap_us"] < detector["pause_min_us"]
-            ):
-                errors.append("policy.detector.pause_cap_us must be >= pause_min_us")
 
         words = policy.get("words_health")
         if not isinstance(words, dict):

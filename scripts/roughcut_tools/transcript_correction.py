@@ -73,7 +73,15 @@ def apply_dictionary_corrections(transcript: Any, dictionaries: list[dict[str, s
             new, rows = _replace_text(old, mapping)
             if new != old:
                 segment["text"] = new
-                corrections.extend({"segment_id": segment.get("id"), **row} for row in rows)
+                corrections.extend(
+                    {
+                        "segment_ref": segment.get("id"),
+                        "kind": "asr_term",
+                        "reason": "dictionary correction",
+                        **row,
+                    }
+                    for row in rows
+                )
         for token_key in ("tokens", "words"):
             token_list = segment.get(token_key)
             if not isinstance(token_list, list):
@@ -86,8 +94,14 @@ def apply_dictionary_corrections(transcript: Any, dictionaries: list[dict[str, s
                 if new != old:
                     token["text"] = new
                     corrections.extend(
-                        {"segment_id": segment.get("id"), "token_id": token.get("id"), **row}
+                        {
+                            "segment_ref": segment.get("id"),
+                            "token_id": token.get("id"),
+                            "kind": "asr_term",
+                            "reason": "dictionary correction",
+                            **row,
+                        }
                         for row in rows
                     )
-    unresolved = list(transcript.get("unresolved_terms", []))
+    unresolved = list(transcript.get("unresolved_terms") or [])
     return result("transcript_correction", data={"transcript": corrected, "corrections": corrections, "unresolved_terms": unresolved}, summary={"correction_count": len(corrections), "unresolved_count": len(unresolved)})

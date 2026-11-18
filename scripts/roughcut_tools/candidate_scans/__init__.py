@@ -15,6 +15,17 @@ from typing import Any
 
 from ..result import result
 
+
+def validate_noise_db(value: Any) -> str | None:
+    """Return the normalized numeric dB string, or None when invalid."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        value = f"{value}dB"
+    if isinstance(value, str) and re.fullmatch(r"-?\d+(?:\.\d+)?dB", value):
+        return value
+    return None
+
 PAUSE_FUNCTIONS = (
     "hesitation", "sentence_boundary", "speaker_handoff", "topic_shift",
     "emphasis", "emotional_beat", "breath", "failed_take_gap", "edit_damage",
@@ -126,7 +137,7 @@ def _audio_pauses_from_file(path: str, config: dict[str, Any]) -> tuple[list[dic
     noise = str(config.get("noise_db", "-35dB"))
     minimum_s = float(config.get("pause_min_us", 120000)) / 1_000_000
     completed = subprocess.run(
-        [ffmpeg, "-hide_banner", "-i", path, "-af", f"silencedetect=noise={noise}:d={minimum_s}", "-f", "null", "-"],
+        [ffmpeg, "-hide_banner", "-nostdin", "-i", path, "-af", f"silencedetect=noise={noise}:d={minimum_s}", "-f", "null", "-"],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -166,9 +177,11 @@ def detect_pause_candidates(audio: Any, config: Any = None) -> dict[str, Any]:
     minimum = config.get("pause_min_us", 120000)
     if not isinstance(minimum, int) or isinstance(minimum, bool) or minimum < 0:
         return result("pause_candidates", errors=["pause_min_us must be a non-negative integer"])
-    noise = config.get("noise_db", "-35dB")
-    if not isinstance(noise, str) or not re.fullmatch(r"-?\d+(?:\.\d+)?dB", noise):
-        return result("pause_candidates", errors=["noise_db must be a numeric dB string"])
+    noise = validate_noise_db(config.get("noise_db", "-35dB"))
+    if noise is None:
+        return result("pause_candidates", errors=["noise_db must be a numeric dB string or number"])
+    if "noise_db" in config:
+        config = {**config, "noise_db": noise}
     pauses = []
     source_error = None
     # A workflow may already have paid for the waveform pass.  Consume its
@@ -223,8 +236,9 @@ def scan_all(playback: Any, preferences: Any = None, audio: Any = None, pause_co
     warnings = ["all candidates require contextual listening"]
     pause_scan_status = "not_executed"
     if audio is not None:
-        reports.append(detect_pause_candidates(audio, pause_config))
-        pause_scan_status = "executed"
+        pause_report = detect_pause_candidates(audio, pause_config)
+        reports.append(pause_report)
+        pause_scan_status = "executed" if pause_report.get("ok") else "failed"
     else:
         warnings.append("pause scan skipped: audio evidence was not provided")
     candidates = [

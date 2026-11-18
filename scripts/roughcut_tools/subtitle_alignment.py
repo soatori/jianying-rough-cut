@@ -188,10 +188,7 @@ def build_subtitle_alignment_plan(playback_map: Any, current_subtitles: Any) -> 
         "default_boundary_mode": "audio",
         "tolerance_us": 40_000,
         "detector": {
-            "hop_us": 10_000,
-            "window_us": 25_000,
             "pause_min_us": 120_000,
-            "pause_cap_us": 350_000,
         },
         "words_health": playback_map.get("words_health", {"status": "unavailable", "role": "fallback"}),
     }

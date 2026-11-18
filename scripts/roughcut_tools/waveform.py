@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from .candidate_scans import validate_noise_db
 from .material_audit import _probe_media
 from .result import result
 from .validators.alignment_plan import validate_alignment_plan
@@ -64,12 +65,13 @@ def _config(value: Any) -> tuple[dict[str, Any], list[str]]:
         and config["tolerance_us"] > config["edge_window_us"]
     ):
         errors.append("waveform config tolerance_us must be <= edge_window_us")
-    if isinstance(config.get("noise_db"), bool) or not isinstance(config.get("noise_db"), (str, int, float)):
-        errors.append("waveform config noise_db must be a string or number")
+    normalized_noise = validate_noise_db(config.get("noise_db"))
+    if normalized_noise is None:
+        errors.append("waveform config noise_db must be a numeric dB string or number")
+    else:
+        config["noise_db"] = normalized_noise
     if not isinstance(config.get("auto_snap_within_tolerance"), bool):
         errors.append("waveform config auto_snap_within_tolerance must be boolean")
-    if isinstance(config.get("noise_db"), (int, float)):
-        config["noise_db"] = f"{config['noise_db']}dB"
     return config, errors
 
 
@@ -561,10 +563,7 @@ def build_waveform_alignment_plan(
             "boundary_authority": "waveform",
             "tolerance_us": settings["tolerance_us"],
             "detector": {
-                "hop_us": settings["hop_us"],
-                "window_us": settings["window_us"],
                 "pause_min_us": settings["pause_min_us"],
-                "pause_cap_us": settings["pause_cap_us"],
             },
             "words_health": words_health,
         },

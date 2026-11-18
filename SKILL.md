@@ -86,7 +86,7 @@ Read only the material needed for the selected task:
 - Delivery refinement: [references/speech-cleanup.md](references/speech-cleanup.md), [references/cut-case-law.md](references/cut-case-law.md), and [references/audio-boundaries.md](references/audio-boundaries.md).
 - Multi-stage source/rough/intermediate/manual-fine/reference comparison: [references/rough-fine-stage-flow.md](references/rough-fine-stage-flow.md), with sequence evidence in [references/timeline-comparison.md](references/timeline-comparison.md).
 - Subtitle proofing/alignment: [references/subtitle-proofreading-and-audio-alignment.md](references/subtitle-proofreading-and-audio-alignment.md) and [references/alignment-plan.md](references/alignment-plan.md).
-- Workflow state, report/plan contracts, and automated preparation: [references/workflow-state.md](references/workflow-state.md), [references/decision-plan-schema.md](references/decision-plan-schema.md), [references/analysis-report-schema.md](references/analysis-report-schema.md), [references/verification-levels.md](references/verification-levels.md), and [references/scripted-workflow.md](references/scripted-workflow.md).
+- Workflow state, report/plan contracts, and automated preparation: [references/workflow-state.md](references/workflow-state.md), [references/decision-plan-schema.md](references/decision-plan-schema.md), [references/analysis-report-schema.md](references/analysis-report-schema.md), [references/verification-levels.md](references/verification-levels.md), [references/learning-report.md](references/learning-report.md), and [references/scripted-workflow.md](references/scripted-workflow.md).
 - Human-reviewed preferences and dictionaries: [references/preference-and-dictionary.md](references/preference-and-dictionary.md).
 
 ## Outputs and handoff
@@ -94,3 +94,7 @@ Read only the material needed for the selected task:
 For content editing, produce an evidence summary and a validated content decision plan. Keep delivery-refinement decisions separate from content decisions. Subtitle work uses a separate application-independent alignment plan; generated subtitles remain pending human review. A final-draft audit is read-only. For CLI handoffs, keep the concise status in the conversation and pass the full report path plus only the needed artifact paths.
 
 Use `validate plan` for content plans and `validate alignment` for plans created or edited outside the workflow. `workflow` and `subtitle-align` validate the alignment plans they generate; do not rerun `validate alignment` on the same unchanged output. Run validation again after a plan edit or when the user requests validation only. Use references/scripted-workflow.md for command inputs and preparation details. Perform project mutations only through jianying-editor and only when the user has authorized that mutation; approval of a plan alone does not authorize a write.
+
+## Tests
+
+Run the regression suite with `python -m unittest discover` from the `tests/` directory. The suite is deterministic; tests that need ffmpeg/ffprobe skip automatically when those tools are absent.

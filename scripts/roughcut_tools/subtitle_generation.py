@@ -53,16 +53,24 @@ def _timed_word_bounds(segment: dict[str, Any]) -> tuple[int, int] | None:
     return min(start for start, _ in bounds), max(end for _, end in bounds)
 
 
-def _corrections_by_segment(corrections: Any) -> dict[str, list[dict[str, Any]]]:
+def _corrections_by_segment(corrections: Any) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
+    input_errors: list[str] = []
     if not isinstance(corrections, list):
-        return grouped
-    for item in corrections:
-        if not isinstance(item, dict) or item.get("segment_id") is None:
+        return grouped, input_errors
+    for index, item in enumerate(corrections):
+        if not isinstance(item, dict):
+            input_errors.append(f"corrections[{index}]: row must be an object")
             continue
-        segment_id = str(item["segment_id"])
-        grouped.setdefault(segment_id, []).append(copy.deepcopy(item))
-    return grouped
+        if "segment_id" in item:
+            input_errors.append(f"corrections[{index}]: segment_id is deprecated; use segment_ref")
+            continue
+        if item.get("segment_ref") is None:
+            input_errors.append(f"corrections[{index}]: segment_ref is required")
+            continue
+        segment_ref = str(item["segment_ref"])
+        grouped.setdefault(segment_ref, []).append(copy.deepcopy(item))
+    return grouped, input_errors
 
 
 def build_generated_subtitle_units(transcript: Any, corrections: Any = None) -> dict[str, Any]:
@@ -90,7 +98,7 @@ def build_generated_subtitle_units(transcript: Any, corrections: Any = None) -> 
     units: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
     seen_semantic_ids: set[str] = set()
-    corrections_by_segment = _corrections_by_segment(corrections)
+    corrections_by_segment, correction_input_errors = _corrections_by_segment(corrections)
 
     for index, raw in enumerate(segments):
         path = f"transcript.segments[{index}]"
@@ -166,6 +174,7 @@ def build_generated_subtitle_units(transcript: Any, corrections: Any = None) -> 
         "subtitle_generation",
         data=data,
         errors=errors,
+        input_errors=correction_input_errors,
         warnings=warnings,
         summary={
             "subtitle_unit_count": len(units),

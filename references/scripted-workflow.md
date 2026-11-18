@@ -106,10 +106,10 @@ Place the application-independent inputs for the requested work in one
 it. For example, to run the full chain:
 
 ```powershell
-python scripts/roughcut_tool.py workflow \
-  --input "<roughcut-workflow.json>" \
-  --scope all \
-  --format text \
+python scripts/roughcut_tool.py workflow `
+  --input "<roughcut-workflow.json>" `
+  --scope all `
+  --format text `
   --out "<roughcut-workflow-report.json>"
 ```
 
@@ -139,6 +139,46 @@ plan.
 Use a standalone CLI command only when it fully represents the requested
 single-stage task. Do not run both a standalone command and `workflow` for the
 same unchanged inputs.
+
+## Standalone stage command input contracts
+
+These single-stage commands are deterministic preparation only. Each emits the
+standard report envelope and never reads or writes a Jianying draft.
+
+- `import-transcript --input <whisperx_result.json> --format ai-jian-koubo-whisperx`
+  converts one supported timed ASR result to the canonical transcript.
+  `--input` is a raw AI剪口播 `whisperx_result.json` (utterance bounds in
+  seconds, word bounds in integer milliseconds), not a report envelope. The
+  importer preserves ASR wording and timing; it corrects nothing and treats no
+  utterance as a final semantic unit. The canonical transcript output feeds
+  `correct-transcript`, `playback-map`, and `subtitle-generate`.
+- `correct-transcript --transcript <transcript.json> --dictionary <dict>`
+  applies confirmed dictionary corrections. `--transcript` is a canonical
+  timed transcript or a report envelope carrying one; repeat `--dictionary`
+  for each confirmed dictionary (JSON object mapping or Markdown table).
+  Corrections change wording only and never touch token or segment timestamps.
+  Every correction row records `segment_ref`, `kind: "asr_term"`, `reason`,
+  `original`, `corrected`, and `context`; rows using the deprecated
+  `segment_id` key are rejected as input errors by the generation stage.
+- `review-snippets --candidates <candidates.json> --media <media>` builds
+  bounded listening windows around candidates. `--candidates` is a candidate
+  scan report or its raw candidate list; `--media` is a media-evidence JSON
+  (optional `duration_us` and `padding_us`) or an existing edited-media path.
+  Snippets are review material only and clear no gate by themselves.
+- `learning-report --entries <entries.json> [--source-kind
+  project_case|synthetic_fixture|manual_review] [--case-ref <ref>]` renders a
+  learning report from reviewed pattern entries. `--entries` is an array of
+  entries or a report envelope containing one; `--source-kind` labels the
+  evidence provenance and `--case-ref` points at the project case reference.
+  The report is a learning signal; the tool layer never persists dictionaries,
+  preferences, or case-law by itself.
+- `retrospective --proposal <proposal.json> --final <final.json>` diffs an
+  approved proposal against the final human-reviewed plan (see
+  [preference-and-dictionary.md](preference-and-dictionary.md)). Both inputs
+  are decision-plan documents or report envelopes carrying one, and the final
+  plan's `workflow.content_pass` must be `stable` or `approved`. Restored and
+  added decisions are the learning signal; a zero diff is still recorded as
+  `fully_adopted`.
 
 The bundle must contain `scope` and may contain `inputs`, `transcript`,
 `edit_map`, `playback_map`, `subtitles`, `audio`, `dictionaries`, `preferences`,

@@ -81,16 +81,26 @@ Break screens by the highest-priority rule that applies, in this order:
 5. **A genuinely long audible pause** — to split an over-long sentence internally.
 
 Rule 2 chooses the boundary; it does not decide what the viewer finally reads.
-For a vertical delivery (`canvas_width < canvas_height`), hand each unit to the
-standing subtitle format profile in
-[../../jianying-packaging/references/semantic-packaging.md](../../jianying-packaging/references/semantic-packaging.md#subtitle-format-profile-preflight-before-emphasis-selection):
-one sentence per `\n` line, the split-trigger punctuation deleted rather than
-kept at a line end, at most 10 characters per line, and `嗯 啊 欸 哦 呢 呐` on
-their own line. Those line rules are a cross-project format profile, not a
-per-case taste value. Horizontal delivery is out of scope for it and keeps its
-own per-case folding convention.
 
 Fragment handling: merge an incidental one-to-two-character fragment back as the tail of the previous screen, but **never across a sentence period** and never merge a semantically complete short unit. A short opener like "你看" starts a new sentence; a model code, number, unit, or named token may stand alone. If splitting produces an incidental fragment, that boundary was not a real semantic boundary — merge it back. A short screen from fast speech is not a defect and must not be flagged: warning on normal speech only teaches reviewers to ignore warnings. Flag only `tooFast` (a screen with more text than its dwell time can be read).
+
+### Vertical subtitle format profile (inline copy)
+
+For a vertical delivery (`canvas_width < canvas_height`), format each unit by
+these standing line rules:
+
+- one sentence per `\n` line;
+- the split-trigger punctuation deleted rather than kept at a line end;
+- at most 10 characters per line;
+- `嗯 啊 欸 哦 呢 呐` each on its own line.
+
+Those line rules are a cross-project format profile, not a per-case taste
+value. Horizontal delivery is out of scope for it and keeps its own per-case
+folding convention.
+
+The authoritative source of this format profile is jianying-packaging's
+subtitle format profile. The rules above are this skill's executable inline
+copy; when the authoritative source is rebuilt, it prevails over this copy.
 
 ## Hybrid boundary policy
 

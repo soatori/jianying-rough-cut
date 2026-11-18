@@ -220,7 +220,7 @@ def build_playback_map(source_transcript: Any, edit_map: Any) -> dict[str, Any]:
             "mapping_status": status,
             "content_plan_id": source_transcript.get("content_plan_id"),
             "content_plan_hash": source_transcript.get("content_plan_hash"),
-            "evidence": source_transcript.get("evidence", [{"kind": "edited_audio", "status": "available"}]),
+            "evidence": source_transcript.get("evidence", [{"kind": "edited_audio", "status": "unavailable"}]),
             "semantic_mapping": edit_map.get("semantic_mapping", source_transcript.get("semantic_mapping", [])),
         },
         errors=errors,

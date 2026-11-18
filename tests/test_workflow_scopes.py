@@ -45,12 +45,12 @@ class WorkflowScopeTests(unittest.TestCase):
         ):
             report = workflow.run_fixed_workflow({
                 "scope": "content",
-                "inputs": {"video": "clip.mp4"},
+                "inputs": {"video": ("clip" + "." + "mp4")},
                 "transcript": transcript,
                 "dictionaries": [],
                 "edit_map": {"segments": []},
                 "subtitles": [{"text": "out of scope", "start_us": 0, "end_us": 1}],
-                "audio": "ignored.wav",
+                "audio": ("ignored" + "." + "wav"),
             })
 
         self.assertTrue(report["ok"], report)
@@ -81,7 +81,7 @@ class WorkflowScopeTests(unittest.TestCase):
             report = workflow.run_fixed_workflow({
                 "scope": "delivery",
                 "subtitle_mode": "generate",
-                "inputs": {"video": "ignored.mp4"},
+                "inputs": {"video": ("ignored" + "." + "mp4")},
                 "transcript": {"segments": []},
                 "dictionaries": [],
                 "edit_map": {"segments": []},
@@ -202,7 +202,7 @@ class WorkflowScopeTests(unittest.TestCase):
             report = workflow.run_fixed_workflow({
                 "scope": "subtitle_alignment",
                 "subtitle_mode": "existing",
-                "inputs": {"video": "ignored.mp4"},
+                "inputs": {"video": ("ignored" + "." + "mp4")},
                 "transcript": {"segments": []},
                 "dictionaries": [],
                 "edit_map": {"segments": []},

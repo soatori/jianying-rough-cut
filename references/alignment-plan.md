@@ -43,10 +43,7 @@ Minimal shape:
     "default_boundary_mode": "audio",
     "tolerance_us": 40000,
     "detector": {
-      "hop_us": 10000,
-      "window_us": 25000,
-      "pause_min_us": 120000,
-      "pause_cap_us": 350000
+      "pause_min_us": 120000
     },
     "words_health": {"status": "valid", "role": "cross_check"}
   },

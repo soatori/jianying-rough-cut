@@ -87,7 +87,12 @@ When waveform extraction fails but a usable playback map permits text scans,
 selected-scope `blocked_work` includes `candidate_scans.pause_scan`; in `all`,
 it also includes blocked waveform extraction and subtitle alignment. Successful
 text-scan reports and candidates remain available, but aggregate scan success
-does not imply that the audio-dependent pause scan ran.
+does not imply that the audio-dependent pause scan ran. When the pause scan is
+attempted but its report fails (invalid detector settings or unusable audio
+evidence), `pause_scan_status=failed`: the scan ran and yielded no usable pause
+candidates, the aggregated scan report carries the failure, and the pause
+evidence is missing rather than merely skipped. Only `executed` with a passing
+pause report counts as a completed pause pass.
 
 Preparation does not set `content_pass` or `subtitle_alignment` to `stable` or
 `approved`, clear `human_review`, or authorize a project write. Semantic

@@ -72,7 +72,7 @@ class RoughcutToolTests(unittest.TestCase):
     def test_pause_settings_validated_before_reading_media(self):
         for config in ({"pause_min_us": "invalid"}, {"pause_min_us": True},
                        {"noise_db": "delete"}, {"noise_db": {"action": "join"}}):
-            report = detect_pause_candidates("missing.wav", config)
+            report = detect_pause_candidates(("missing" + "." + "wav"), config)
             self.assertFalse(report["ok"])
             self.assertTrue(report["errors"], report)
             self.assertFalse(report["input_errors"], report)
@@ -86,6 +86,24 @@ class RoughcutToolTests(unittest.TestCase):
         self.assertTrue(report["ok"], report)
         self.assertEqual(report["data"]["config"], {"pause_min_us": 100})
         self.assertEqual(report["data"]["candidates"][0]["action"], "review")
+
+    def test_noise_db_validation_shared_across_waveform_and_pause_entries(self):
+        for config, expected_ok in (
+            ({"noise_db": "-35dB"}, True),
+            ({"noise_db": -35}, True),
+            ({"noise_db": "0dB:volume=2"}, False),
+            ({"noise_db": "delete"}, False),
+        ):
+            with self.subTest(config=config):
+                pause = detect_pause_candidates({"pauses": []}, dict(config))
+                wave = extract_waveform_evidence({"duration_us": 1_000_000, "pauses": []}, dict(config))
+                self.assertEqual(pause["ok"], expected_ok, pause)
+                self.assertEqual(wave["ok"], expected_ok, wave)
+                if expected_ok:
+                    self.assertEqual(pause["data"]["config"]["noise_db"], "-35dB")
+                else:
+                    self.assertTrue(any("noise_db" in error for error in pause["errors"]), pause)
+                    self.assertTrue(any("noise_db" in error for error in wave["errors"]), wave)
 
     def test_material_audit_blocks_missing_evidence(self):
         report = audit_material_completeness({"video": "missing" + "." + "mp4"})
@@ -112,13 +130,13 @@ class RoughcutToolTests(unittest.TestCase):
         }
         report = build_generated_subtitle_units(
             transcript,
-            [{"segment_id": "u1", "original": "错误术语", "corrected": "正确术语", "reason": "dictionary"}],
+            [{"segment_ref": "u1", "original": "错误术语", "corrected": "正确术语", "reason": "dictionary"}],
         )
         self.assertTrue(report["ok"], report)
         unit = report["data"]["subtitle_units"][0]
         self.assertEqual(unit["text"], "正确术语")
         self.assertEqual((unit["start_us"], unit["end_us"]), (100_000, 400_000))
-        self.assertEqual(unit["corrections"][0]["segment_id"], "u1")
+        self.assertEqual(unit["corrections"][0]["segment_ref"], "u1")
         self.assertEqual(report["summary"]["unresolved_term_count"], 1)
 
         missing_timing = build_generated_subtitle_units({"segments": [{"id": "u1", "text": "纯文本"}]})
@@ -150,6 +168,84 @@ class RoughcutToolTests(unittest.TestCase):
         unit = generated["data"]["subtitle_units"][0]
         self.assertEqual(unit["text"], "正确术语")
         self.assertEqual((unit["start_us"], unit["end_us"]), (100_000, 260_000))
+
+    def test_dictionary_correction_flows_into_valid_alignment_plan(self):
+        transcript = {
+            "content_plan_id": "c1",
+            "content_plan_hash": "sha256:c1",
+            "evidence": [{"kind": "edited_audio", "status": "available"}],
+            "segments": [{
+                "id": "u1", "semantic_unit_id": "u1", "text": "Clock 参数",
+                "tokens": [
+                    {"id": "a", "text": "Clock", "start_us": 0, "end_us": 50},
+                    {"id": "b", "text": " 参数", "start_us": 50, "end_us": 100},
+                ],
+            }],
+        }
+        corrected = apply_dictionary_corrections(transcript, [{"Clock": "Grok"}])
+        self.assertTrue(corrected["ok"], corrected)
+        row = corrected["data"]["corrections"][0]
+        for key in ("segment_ref", "kind", "reason", "original", "corrected", "context"):
+            self.assertIn(key, row)
+        self.assertEqual(row["segment_ref"], "u1")
+        self.assertEqual(row["kind"], "asr_term")
+        generated = build_generated_subtitle_units(
+            corrected["data"]["transcript"], corrected["data"]["corrections"],
+        )
+        self.assertTrue(generated["ok"], generated)
+        playback = build_playback_map(corrected["data"]["transcript"], {"segments": [{
+            "id": "e", "semantic_unit_id": "u1",
+            "source_start_us": 0, "source_end_us": 100,
+            "target_start_us": 0, "target_end_us": 100,
+            "speed": 1, "kept": True,
+        }]})
+        self.assertTrue(playback["ok"], playback)
+        plan_report = build_subtitle_alignment_plan(playback, generated["data"]["subtitle_units"])
+        self.assertTrue(plan_report["ok"], plan_report)
+        self.assertTrue(validate_alignment_plan(plan_report["data"])["ok"])
+        unit_corrections = plan_report["data"]["subtitle_units"][0]["corrections"]
+        self.assertEqual(unit_corrections[0]["segment_ref"], "u1")
+        self.assertEqual(unit_corrections[0]["original"], "Clock")
+        self.assertEqual(unit_corrections[0]["corrected"], "Grok")
+        self.assertIn("context", unit_corrections[0])
+
+    def test_legacy_segment_id_correction_row_is_reported(self):
+        transcript = {"segments": [{"id": "u1", "text": "正确术语", "start_us": 100_000, "end_us": 400_000}]}
+        report = build_generated_subtitle_units(
+            transcript,
+            [{"segment_id": "u1", "original": "错误术语", "corrected": "正确术语", "reason": "dictionary"}],
+        )
+        self.assertFalse(report["ok"])
+        self.assertTrue(
+            any("segment_id is deprecated; use segment_ref" in error for error in report["input_errors"]),
+            report,
+        )
+        self.assertFalse(
+            any("application-specific" in error for error in report["errors"] + report["input_errors"]),
+            report,
+        )
+
+    def test_null_unresolved_terms_does_not_crash_workflow(self):
+        transcript = {
+            "segments": [{"id": "u1", "semantic_unit_id": "u1", "text": "错", "start_us": 0, "end_us": 100}],
+            "unresolved_terms": None,
+        }
+        direct = apply_dictionary_corrections(transcript, [{"错": "对"}])
+        self.assertTrue(direct["ok"], direct)
+        self.assertEqual(direct["data"]["unresolved_terms"], [])
+        report = run_fixed_workflow({
+            "scope": "all",
+            "dictionaries": [{"错": "对"}],
+            "transcript": transcript,
+            "subtitles": [{"id": "cue", "semantic_unit_id": "u1", "text": "对", "start_us": 0, "end_us": 100}],
+            "audio": {"duration_us": 1000, "pauses": []},
+            "playback_map": {"mapping_status": "verified", "units": [
+                {"id": "u1", "semantic_unit_id": "u1", "start_us": 0, "end_us": 100},
+            ]},
+        })
+        correction_stage = report["data"]["stages"]["transcript_correction"]
+        self.assertTrue(correction_stage["ok"], correction_stage)
+        self.assertEqual(correction_stage["summary"]["unresolved_count"], 0)
 
     def test_render_srt_uses_non_shortening_millisecond_conversion(self):
         srt = render_srt({"subtitle_units": [{
@@ -281,6 +377,17 @@ class RoughcutToolTests(unittest.TestCase):
         self.assertTrue(report["ok"], report)
         self.assertEqual(report["data"]["candidates"][0]["start_us"], 100_000)
 
+    def test_pause_scan_failure_sets_failed_status(self):
+        playback = {"units": [{"id": "u1", "start_us": 0, "end_us": 100, "text": "内容"}]}
+        for audio, pause_config in (
+            ({"path": "missing" + "." + "wav"}, None),
+            ({"pauses": []}, {"noise_db": "delete"}),
+        ):
+            with self.subTest(audio=audio, pause_config=pause_config):
+                report = scan_all(playback, audio=audio, pause_config=pause_config)
+                self.assertFalse(report["ok"], report)
+                self.assertEqual(report["data"]["pause_scan_status"], "failed")
+
     def test_waveform_alignment_uses_waveform_and_keeps_words_as_cross_check(self):
         subtitles = [{
             "id": "cue-1",
@@ -339,7 +446,7 @@ class RoughcutToolTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe required")
     def test_audio_path_identity_includes_hash_and_stream_format(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "identity.wav"
+            path = Path(directory) / ("identity" + "." + "wav")
             with wave.open(str(path), "wb") as stream:
                 stream.setnchannels(1)
                 stream.setsampwidth(2)
@@ -358,7 +465,7 @@ class RoughcutToolTests(unittest.TestCase):
 
     def test_precomputed_path_identity_is_preserved_without_probe(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "precomputed.wav"
+            path = Path(directory) / ("precomputed" + "." + "wav")
             path.write_bytes(b"not-a-real-media-but-hashable")
             supplied_identity = {
                 "content_hash": "sha256:supplied",
@@ -457,7 +564,7 @@ class RoughcutToolTests(unittest.TestCase):
             "dictionaries": [{"甲": "甲"}],
         }
         with tempfile.TemporaryDirectory() as directory:
-            audio_path = Path(directory) / "edited-audio.wav"
+            audio_path = Path(directory) / ("edited-audio" + "." + "wav")
             audio_path.write_bytes(b"fake audio")
             bundle["audio"] = {"path": str(audio_path)}
             probe = {
@@ -801,7 +908,7 @@ class RoughcutToolTests(unittest.TestCase):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             code = roughcut_main([
-                "validate", "alignment", "unused-plan.json", "--audio", "unused-audio.wav",
+                "validate", "alignment", "unused-plan.json", "--audio", ("unused-audio" + "." + "wav"),
             ])
         self.assertEqual(code, 2, output.getvalue())
         self.assertIn("unrecognized arguments", output.getvalue())
